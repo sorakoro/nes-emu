@@ -1,4 +1,5 @@
 mod cart;
+mod ppu;
 
 use crate::cart::Cartridge;
 use std::{env, fs, path::Path};
