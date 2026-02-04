@@ -46,4 +46,8 @@ impl Cartridge {
     pub fn read_chr_rom(&self, addr: u16) -> u8 {
         self.chr_rom[addr as usize]
     }
+
+    pub fn is_vertical_mirroring(&self) -> bool {
+        self.is_vertical_mirroring
+    }
 }

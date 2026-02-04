@@ -13,7 +13,7 @@
 // +--------- Emphasize blue
 
 #[derive(Debug)]
-struct MaskReg {
+pub struct MaskReg {
     value: u8,
 }
 
