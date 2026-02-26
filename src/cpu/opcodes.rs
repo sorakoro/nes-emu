@@ -165,6 +165,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xF1] = Some(Instruction::new("SBC", IndirectY, 5, true));
 
     opcodes[0x38] = Some(Instruction::new("SEC", Implicit, 2, false));
+    opcodes[0xF8] = Some(Instruction::new("SED", Implicit, 2, false));
     opcodes[0x60] = Some(Instruction::new("RTS", Implicit, 6, false));
     opcodes[0x40] = Some(Instruction::new("RTI", Implicit, 6, false));
 
