@@ -290,6 +290,7 @@ impl<'a> CPU<'a> {
             "CLI" => self.set_flag(INTERRUPT_DISABLE, false),
             "CLV" => self.set_flag(OVERFLOW, false),
             "CMP" => self.compare(self.a, addr),
+            "CPX" => self.compare(self.x, addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1122,5 +1123,31 @@ mod tests {
         assert_eq!(cpu.status & ZERO, 0);
         assert_eq!(cpu.status & CARRY, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn cpx_equal() {
+        let cart = test_cartridge(&[0xE0, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x10;
+        cpu.step();
+
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn cpx_less() {
+        let cart = test_cartridge(&[0xE0, 0x20]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x10;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & CARRY, 0);
     }
 }
