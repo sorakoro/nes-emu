@@ -139,6 +139,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x11] = Some(Instruction::new("ORA", IndirectY, 5, true));
 
     opcodes[0x48] = Some(Instruction::new("PHA", Implicit, 3, false));
+    opcodes[0x08] = Some(Instruction::new("PHP", Implicit, 3, false));
 
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));

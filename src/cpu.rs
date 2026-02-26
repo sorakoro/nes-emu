@@ -348,6 +348,7 @@ impl<'a> CPU<'a> {
                 self.update_zero_negative(self.a);
             }
             "PHA" => self.push(self.a),
+            "PHP" => self.push(self.status | BREAK | UNUSED),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1678,5 +1679,23 @@ mod tests {
 
         assert_eq!(cpu.sp, old_sp.wrapping_sub(1));
         assert_eq!(cpu.ram[0x0100 + old_sp as usize], 0x42);
+    }
+
+    #[test]
+    fn php() {
+        let cart = test_cartridge(&[0x08]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status = CARRY | NEGATIVE | UNUSED | INTERRUPT_DISABLE;
+        let old_sp = cpu.sp;
+        cpu.step();
+
+        assert_eq!(cpu.sp, old_sp.wrapping_sub(1));
+        let pushed = cpu.ram[0x0100 + old_sp as usize];
+        assert_ne!(pushed & BREAK, 0);
+        assert_ne!(pushed & UNUSED, 0);
+        assert_ne!(pushed & CARRY, 0);
+        assert_ne!(pushed & NEGATIVE, 0);
     }
 }
