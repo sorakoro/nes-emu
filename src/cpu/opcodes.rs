@@ -53,6 +53,15 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x61] = Some(Instruction::new("ADC", IndirectX, 6, false));
     opcodes[0x71] = Some(Instruction::new("ADC", IndirectY, 5, true));
 
+    opcodes[0x29] = Some(Instruction::new("AND", Immediate, 2, false));
+    opcodes[0x25] = Some(Instruction::new("AND", ZeroPage, 3, false));
+    opcodes[0x35] = Some(Instruction::new("AND", ZeroPageX, 4, false));
+    opcodes[0x2D] = Some(Instruction::new("AND", Absolute, 4, false));
+    opcodes[0x3D] = Some(Instruction::new("AND", AbsoluteX, 4, true));
+    opcodes[0x39] = Some(Instruction::new("AND", AbsoluteY, 4, true));
+    opcodes[0x21] = Some(Instruction::new("AND", IndirectX, 6, false));
+    opcodes[0x31] = Some(Instruction::new("AND", IndirectY, 5, true));
+
     opcodes[0xA9] = Some(Instruction::new("LDA", Immediate, 2, false));
     opcodes[0xA5] = Some(Instruction::new("LDA", ZeroPage, 3, false));
     opcodes[0xB5] = Some(Instruction::new("LDA", ZeroPageX, 4, false));
