@@ -306,6 +306,10 @@ impl<'a> CPU<'a> {
                 self.update_zero_negative(self.a);
             }
             "INC" => self.inc(addr),
+            "INX" => {
+                self.x = self.x.wrapping_add(1);
+                self.update_zero_negative(self.x);
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1376,5 +1380,32 @@ mod tests {
 
         assert_eq!(cpu.ram[0x10], 0x80);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn inx() {
+        let cart = test_cartridge(&[0xE8]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x05;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x06);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn inx_wrap() {
+        let cart = test_cartridge(&[0xE8]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0xFF;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
     }
 }
