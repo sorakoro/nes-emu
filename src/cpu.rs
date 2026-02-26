@@ -328,6 +328,19 @@ impl<'a> CPU<'a> {
                 self.y = self.read(addr);
                 self.update_zero_negative(self.y);
             }
+            "LSR" => {
+                if inst.mode == Accumulator {
+                    self.set_flag(CARRY, self.a & 0x01 != 0);
+                    self.a >>= 1;
+                    self.update_zero_negative(self.a);
+                } else {
+                    let mut value = self.read(addr);
+                    self.set_flag(CARRY, value & 0x01 != 0);
+                    value >>= 1;
+                    self.write(addr, value);
+                    self.update_zero_negative(value);
+                }
+            }
 
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1564,5 +1577,59 @@ mod tests {
 
         assert_eq!(cpu.y, 0x99);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn lsr_accumulator() {
+        let cart = test_cartridge(&[0x4A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x4A;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x25);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn lsr_accumulator_carry() {
+        let cart = test_cartridge(&[0x4A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x03;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x01);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn lsr_accumulator_zero() {
+        let cart = test_cartridge(&[0x4A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x01;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn lsr_memory() {
+        let cart = test_cartridge(&[0x46, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0x81;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x40);
+        assert_ne!(cpu.status & CARRY, 0);
     }
 }
