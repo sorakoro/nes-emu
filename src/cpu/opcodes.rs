@@ -87,6 +87,10 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xE4] = Some(Instruction::new("CPX", ZeroPage, 3, false));
     opcodes[0xEC] = Some(Instruction::new("CPX", Absolute, 4, false));
 
+    opcodes[0xC0] = Some(Instruction::new("CPY", Immediate, 2, false));
+    opcodes[0xC4] = Some(Instruction::new("CPY", ZeroPage, 3, false));
+    opcodes[0xCC] = Some(Instruction::new("CPY", Absolute, 4, false));
+
     opcodes[0x24] = Some(Instruction::new("BIT", ZeroPage, 3, false));
     opcodes[0x2C] = Some(Instruction::new("BIT", Absolute, 4, false));
 

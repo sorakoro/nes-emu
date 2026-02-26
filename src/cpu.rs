@@ -291,6 +291,7 @@ impl<'a> CPU<'a> {
             "CLV" => self.set_flag(OVERFLOW, false),
             "CMP" => self.compare(self.a, addr),
             "CPX" => self.compare(self.x, addr),
+            "CPY" => self.compare(self.y, addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1145,6 +1146,32 @@ mod tests {
         let mut cpu = CPU::new(&mut ppu, &cart);
         cpu.reset();
         cpu.x = 0x10;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn cpy_equal() {
+        let cart = test_cartridge(&[0xC0, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x10;
+        cpu.step();
+
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn cpy_less() {
+        let cart = test_cartridge(&[0xC0, 0x20]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x10;
         cpu.step();
 
         assert_eq!(cpu.status & ZERO, 0);
