@@ -356,6 +356,21 @@ impl<'a> CPU<'a> {
             "PLP" => {
                 self.status = (self.pull() & !BREAK) | UNUSED;
             }
+            "ROR" => {
+                if inst.mode == Accumulator {
+                    let old_carry = if self.status & CARRY != 0 { 0x80 } else { 0 };
+                    self.set_flag(CARRY, self.a & 0x01 != 0);
+                    self.a = (self.a >> 1) | old_carry;
+                    self.update_zero_negative(self.a);
+                } else {
+                    let mut value = self.read(addr);
+                    let old_carry = if self.status & CARRY != 0 { 0x80 } else { 0 };
+                    self.set_flag(CARRY, value & 0x01 != 0);
+                    value = (value >> 1) | old_carry;
+                    self.write(addr, value);
+                    self.update_zero_negative(value);
+                }
+            }
             "ROL" => {
                 if inst.mode == Accumulator {
                     let old_carry = self.status & CARRY;
@@ -1824,5 +1839,62 @@ mod tests {
 
         assert_eq!(cpu.ram[0x10], 0x0B);
         assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn ror_accumulator_no_carry() {
+        let cart = test_cartridge(&[0x6A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x4A;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x25);
+        assert_eq!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn ror_accumulator_with_carry_in() {
+        let cart = test_cartridge(&[0x6A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x4A;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0xA5);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn ror_accumulator_carry_out() {
+        let cart = test_cartridge(&[0x6A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x01;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn ror_memory() {
+        let cart = test_cartridge(&[0x66, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0x03;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x81);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }
