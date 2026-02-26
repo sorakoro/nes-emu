@@ -347,6 +347,7 @@ impl<'a> CPU<'a> {
                 self.a |= self.read(addr);
                 self.update_zero_negative(self.a);
             }
+            "PHA" => self.push(self.a),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1663,5 +1664,19 @@ mod tests {
 
         assert_eq!(cpu.a, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn pha() {
+        let cart = test_cartridge(&[0x48]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        let old_sp = cpu.sp;
+        cpu.step();
+
+        assert_eq!(cpu.sp, old_sp.wrapping_sub(1));
+        assert_eq!(cpu.ram[0x0100 + old_sp as usize], 0x42);
     }
 }
