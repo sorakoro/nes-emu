@@ -143,6 +143,12 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x68] = Some(Instruction::new("PLA", Implicit, 4, false));
     opcodes[0x28] = Some(Instruction::new("PLP", Implicit, 4, false));
 
+    opcodes[0x2A] = Some(Instruction::new("ROL", Accumulator, 2, false));
+    opcodes[0x26] = Some(Instruction::new("ROL", ZeroPage, 5, false));
+    opcodes[0x36] = Some(Instruction::new("ROL", ZeroPageX, 6, false));
+    opcodes[0x2E] = Some(Instruction::new("ROL", Absolute, 6, false));
+    opcodes[0x3E] = Some(Instruction::new("ROL", AbsoluteX, 7, false));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));
