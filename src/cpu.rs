@@ -357,6 +357,7 @@ impl<'a> CPU<'a> {
                 self.status = (self.pull() & !BREAK) | UNUSED;
             }
             "SBC" => self.sbc(addr),
+            "SEC" => self.set_flag(CARRY, true),
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2065,6 +2066,18 @@ mod tests {
 
         assert_eq!(cpu.a, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn sec() {
+        let cart = test_cartridge(&[0x38]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        assert_eq!(cpu.status & CARRY, 0);
+        cpu.step();
+
         assert_ne!(cpu.status & CARRY, 0);
     }
 }
