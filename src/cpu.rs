@@ -353,6 +353,9 @@ impl<'a> CPU<'a> {
                 self.a = self.pull();
                 self.update_zero_negative(self.a);
             }
+            "PLP" => {
+                self.status = (self.pull() & !BREAK) | UNUSED;
+            }
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1734,5 +1737,22 @@ mod tests {
 
         assert_eq!(cpu.a, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn plp() {
+        let cart = test_cartridge(&[0x28]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.push(CARRY | NEGATIVE | BREAK);
+        cpu.step();
+
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+        // Bフラグは無視される
+        assert_eq!(cpu.status & BREAK, 0);
+        // Uフラグは常にセット
+        assert_ne!(cpu.status & UNUSED, 0);
     }
 }
