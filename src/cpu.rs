@@ -280,6 +280,11 @@ impl<'a> CPU<'a> {
                     self.branch(addr);
                 }
             }
+            "BVS" => {
+                if self.status & OVERFLOW != 0 {
+                    self.branch(addr);
+                }
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -987,6 +992,29 @@ mod tests {
         let mut cpu = CPU::new(&mut ppu, &cart);
         cpu.reset();
         cpu.status |= OVERFLOW;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8002);
+    }
+
+    #[test]
+    fn bvs_branch_taken() {
+        let cart = test_cartridge(&[0x70, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= OVERFLOW;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8006);
+    }
+
+    #[test]
+    fn bvs_branch_not_taken() {
+        let cart = test_cartridge(&[0x70, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
         cpu.step();
 
         assert_eq!(cpu.pc, 0x8002);
