@@ -103,6 +103,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xEE] = Some(Instruction::new("INC", Absolute, 6, false));
     opcodes[0xFE] = Some(Instruction::new("INC", AbsoluteX, 7, false));
     opcodes[0xE8] = Some(Instruction::new("INX", Implicit, 2, false));
+    opcodes[0xC8] = Some(Instruction::new("INY", Implicit, 2, false));
 
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
