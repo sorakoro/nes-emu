@@ -359,6 +359,7 @@ impl<'a> CPU<'a> {
             "SBC" => self.sbc(addr),
             "SEC" => self.set_flag(CARRY, true),
             "SED" => self.set_flag(DECIMAL, true),
+            "SEI" => self.set_flag(INTERRUPT_DISABLE, true),
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2092,5 +2093,18 @@ mod tests {
         cpu.step();
 
         assert_ne!(cpu.status & DECIMAL, 0);
+    }
+
+    #[test]
+    fn sei() {
+        let cart = test_cartridge(&[0x58, 0x78]); // CLI then SEI
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step(); // CLI
+        assert_eq!(cpu.status & INTERRUPT_DISABLE, 0);
+        cpu.step(); // SEI
+
+        assert_ne!(cpu.status & INTERRUPT_DISABLE, 0);
     }
 }
