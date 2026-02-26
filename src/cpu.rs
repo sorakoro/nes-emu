@@ -362,6 +362,7 @@ impl<'a> CPU<'a> {
             "SEI" => self.set_flag(INTERRUPT_DISABLE, true),
             "STA" => self.write(addr, self.a),
             "STX" => self.write(addr, self.x),
+            "STY" => self.write(addr, self.y),
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2141,6 +2142,18 @@ mod tests {
         let mut cpu = CPU::new(&mut ppu, &cart);
         cpu.reset();
         cpu.x = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x42);
+    }
+
+    #[test]
+    fn sty_zero_page() {
+        let cart = test_cartridge(&[0x84, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x42;
         cpu.step();
 
         assert_eq!(cpu.ram[0x10], 0x42);
