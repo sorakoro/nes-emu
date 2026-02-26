@@ -285,6 +285,7 @@ impl<'a> CPU<'a> {
                     self.branch(addr);
                 }
             }
+            "CLC" => self.set_flag(CARRY, false),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1018,5 +1019,17 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.pc, 0x8002);
+    }
+
+    #[test]
+    fn clc() {
+        let cart = test_cartridge(&[0x18]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.status & CARRY, 0);
     }
 }
