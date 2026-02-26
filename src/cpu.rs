@@ -356,6 +356,7 @@ impl<'a> CPU<'a> {
             "PLP" => {
                 self.status = (self.pull() & !BREAK) | UNUSED;
             }
+            "SBC" => self.sbc(addr),
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -436,6 +437,16 @@ impl<'a> CPU<'a> {
 
     fn adc(&mut self, addr: u16) {
         let value = self.read(addr);
+        self.add_to_a(value);
+    }
+
+    fn sbc(&mut self, addr: u16) {
+        let value = self.read(addr);
+        // SBC = ADC with complement: A - M - (1-C) = A + ~M + C
+        self.add_to_a(!value);
+    }
+
+    fn add_to_a(&mut self, value: u8) {
         let carry = if self.status & CARRY != 0 { 1u16 } else { 0 };
         let sum = self.a as u16 + value as u16 + carry;
 
@@ -1958,5 +1969,102 @@ mod tests {
 
         cpu.step(); // RTS
         assert_eq!(cpu.pc, 0x8003);
+    }
+
+    #[test]
+    fn sbc_no_borrow() {
+        // 0x50 - 0x10 (C=1, no borrow) = 0x40
+        let cart = test_cartridge(&[0xE9, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x40);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+        assert_eq!(cpu.status & OVERFLOW, 0);
+    }
+
+    #[test]
+    fn sbc_with_borrow() {
+        // 0x50 - 0x10 - 1(borrow, C=0) = 0x3F
+        let cart = test_cartridge(&[0xE9, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        // C=0 (borrow)
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x3F);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn sbc_underflow() {
+        // 0x00 - 0x01 (C=1) = 0xFF, C=0
+        let cart = test_cartridge(&[0xE9, 0x01]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x00;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0xFF);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn sbc_overflow_positive() {
+        // 0x50 - 0xB0 (C=1) → 正-負=負 → V=1
+        let cart = test_cartridge(&[0xE9, 0xB0]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0xA0);
+        assert_ne!(cpu.status & OVERFLOW, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn sbc_overflow_negative() {
+        // 0xD0 - 0x70 (C=1) → 負-正=正 → V=1
+        let cart = test_cartridge(&[0xE9, 0x70]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xD0;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x60);
+        assert_ne!(cpu.status & OVERFLOW, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn sbc_zero() {
+        // 0x50 - 0x50 (C=1) = 0x00
+        let cart = test_cartridge(&[0xE9, 0x50]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
     }
 }
