@@ -50,4 +50,14 @@ impl Cartridge {
     pub fn is_vertical_mirroring(&self) -> bool {
         self.is_vertical_mirroring
     }
+
+    #[cfg(test)]
+    pub fn new_test(prg_rom: Vec<u8>) -> Self {
+        Cartridge {
+            is_vertical_mirroring: false,
+            mapper: 0,
+            prg_rom,
+            chr_rom: vec![0; 0x2000],
+        }
+    }
 }

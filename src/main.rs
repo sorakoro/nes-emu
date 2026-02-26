@@ -1,7 +1,10 @@
 mod cart;
+mod cpu;
 mod ppu;
 
 use crate::cart::Cartridge;
+use crate::cpu::CPU;
+use crate::ppu::PPU;
 use std::{env, fs, path::Path};
 
 fn main() {
@@ -14,8 +17,13 @@ fn run() -> Result<(), String> {
     let raw = load_rom(Path::new(path))?;
 
     let cart = Cartridge::new(&raw)?;
+    let mut ppu = PPU::new(&cart);
+    let mut cpu = CPU::new(&mut ppu, &cart);
+    cpu.reset();
 
-    Ok(())
+    loop {
+        cpu.step();
+    }
 }
 
 fn load_rom(path: &Path) -> Result<Vec<u8>, String> {
