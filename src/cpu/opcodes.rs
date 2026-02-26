@@ -175,6 +175,10 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x99] = Some(Instruction::new("STA", AbsoluteY, 5, false));
     opcodes[0x81] = Some(Instruction::new("STA", IndirectX, 6, false));
     opcodes[0x91] = Some(Instruction::new("STA", IndirectY, 6, false));
+
+    opcodes[0x86] = Some(Instruction::new("STX", ZeroPage, 3, false));
+    opcodes[0x96] = Some(Instruction::new("STX", ZeroPageY, 4, false));
+    opcodes[0x8E] = Some(Instruction::new("STX", Absolute, 4, false));
     opcodes[0x60] = Some(Instruction::new("RTS", Implicit, 6, false));
     opcodes[0x40] = Some(Instruction::new("RTI", Implicit, 6, false));
 
