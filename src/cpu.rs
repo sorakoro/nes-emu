@@ -315,6 +315,10 @@ impl<'a> CPU<'a> {
                 self.update_zero_negative(self.y);
             }
             "JMP" => self.pc = addr,
+            "JSR" => {
+                self.push_u16(self.pc.wrapping_sub(1));
+                self.pc = addr;
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1479,5 +1483,23 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.pc, 0x8040);
+    }
+
+    #[test]
+    fn jsr() {
+        // JSR $9000 at $8000
+        let cart = test_cartridge(&[0x20, 0x00, 0x90]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        let old_sp = cpu.sp;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x9000);
+        assert_eq!(cpu.sp, old_sp.wrapping_sub(2));
+        // スタックにはPC-1 ($8002) が格納される
+        let hi = cpu.ram[0x0100 + old_sp as usize];
+        let lo = cpu.ram[0x0100 + old_sp.wrapping_sub(1) as usize];
+        assert_eq!((hi as u16) << 8 | lo as u16, 0x8002);
     }
 }
