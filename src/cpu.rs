@@ -356,6 +356,11 @@ impl<'a> CPU<'a> {
             "PLP" => {
                 self.status = (self.pull() & !BREAK) | UNUSED;
             }
+            "RTS" => {
+                let lo = self.pull() as u16;
+                let hi = self.pull() as u16;
+                self.pc = ((hi << 8) | lo).wrapping_add(1);
+            }
             "RTI" => {
                 self.status = (self.pull() & !BREAK) | UNUSED;
                 let lo = self.pull() as u16;
@@ -1931,5 +1936,27 @@ mod tests {
         assert_eq!(cpu.status & BREAK, 0);
         assert_ne!(cpu.status & UNUSED, 0);
         assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn jsr_rts() {
+        // JSR $8010, then RTS at $8010
+        let mut prg_rom = vec![0u8; 0x8000];
+        prg_rom[0] = 0x20; // JSR
+        prg_rom[1] = 0x10;
+        prg_rom[2] = 0x80; // → $8010
+        prg_rom[0x10] = 0x60; // RTS at $8010
+        prg_rom[0x7FFC] = 0x00;
+        prg_rom[0x7FFD] = 0x80;
+        let cart = Cartridge::new_test(prg_rom);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+
+        cpu.step(); // JSR $8010
+        assert_eq!(cpu.pc, 0x8010);
+
+        cpu.step(); // RTS
+        assert_eq!(cpu.pc, 0x8003);
     }
 }
