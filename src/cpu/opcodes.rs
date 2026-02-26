@@ -127,6 +127,8 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x4E] = Some(Instruction::new("LSR", Absolute, 6, false));
     opcodes[0x5E] = Some(Instruction::new("LSR", AbsoluteX, 7, false));
 
+    opcodes[0xEA] = Some(Instruction::new("NOP", Implicit, 2, false));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));

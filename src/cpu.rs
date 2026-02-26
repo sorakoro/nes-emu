@@ -342,6 +342,7 @@ impl<'a> CPU<'a> {
                 }
             }
 
+            "NOP" => {}
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
