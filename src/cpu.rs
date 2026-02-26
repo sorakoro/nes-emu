@@ -274,6 +274,7 @@ impl<'a> CPU<'a> {
                     self.branch(addr);
                 }
             }
+            "BRK" => self.brk(),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -286,6 +287,30 @@ impl<'a> CPU<'a> {
         let cycles = inst.cycles + extra;
         self.cycles += cycles as u64;
         cycles
+    }
+
+    fn push(&mut self, value: u8) {
+        self.write(0x0100 + self.sp as u16, value);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn pull(&mut self) -> u8 {
+        self.sp = self.sp.wrapping_add(1);
+        self.read(0x0100 + self.sp as u16)
+    }
+
+    fn push_u16(&mut self, value: u16) {
+        self.push((value >> 8) as u8);
+        self.push(value as u8);
+    }
+
+    fn brk(&mut self) {
+        self.push_u16(self.pc);
+        self.push(self.status | BREAK | UNUSED);
+        self.set_flag(INTERRUPT_DISABLE, true);
+        let lo = self.read(0xFFFE) as u16;
+        let hi = self.read(0xFFFF) as u16;
+        self.pc = (hi << 8) | lo;
     }
 
     fn adc(&mut self, addr: u16) {
@@ -907,5 +932,35 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.pc, 0x8002);
+    }
+
+    #[test]
+    fn brk() {
+        // IRQベクタ ($FFFE-$FFFF) に $C000 を設定
+        let mut prg_rom = vec![0u8; 0x8000];
+        prg_rom[0] = 0x00; // BRK at $8000
+        prg_rom[0x7FFC] = 0x00;
+        prg_rom[0x7FFD] = 0x80; // reset → $8000
+        prg_rom[0x7FFE] = 0x00;
+        prg_rom[0x7FFF] = 0xC0; // IRQ → $C000
+        let cart = Cartridge::new_test(prg_rom);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+
+        let old_status = cpu.status;
+        let old_sp = cpu.sp;
+        cpu.step();
+
+        // PCがIRQベクタに設定される
+        assert_eq!(cpu.pc, 0xC000);
+        // スタックにPC(2バイト)+status(1バイト)がpushされる
+        assert_eq!(cpu.sp, old_sp.wrapping_sub(3));
+        // Iフラグがセットされる
+        assert_ne!(cpu.status & INTERRUPT_DISABLE, 0);
+        // スタック上のstatusにBフラグが立っている
+        let pushed_status = cpu.ram[0x0100 + cpu.sp.wrapping_add(1) as usize];
+        assert_ne!(pushed_status & BREAK, 0);
+        assert_ne!(pushed_status & UNUSED, 0);
     }
 }
