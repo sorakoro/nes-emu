@@ -44,6 +44,15 @@ impl Instruction {
 pub const OPCODES: [Option<Instruction>; 256] = {
     let mut opcodes = [None; 256];
 
+    opcodes[0x69] = Some(Instruction::new("ADC", Immediate, 2, false));
+    opcodes[0x65] = Some(Instruction::new("ADC", ZeroPage, 3, false));
+    opcodes[0x75] = Some(Instruction::new("ADC", ZeroPageX, 4, false));
+    opcodes[0x6D] = Some(Instruction::new("ADC", Absolute, 4, false));
+    opcodes[0x7D] = Some(Instruction::new("ADC", AbsoluteX, 4, true));
+    opcodes[0x79] = Some(Instruction::new("ADC", AbsoluteY, 4, true));
+    opcodes[0x61] = Some(Instruction::new("ADC", IndirectX, 6, false));
+    opcodes[0x71] = Some(Instruction::new("ADC", IndirectY, 5, true));
+
     opcodes[0xA9] = Some(Instruction::new("LDA", Immediate, 2, false));
     opcodes[0xA5] = Some(Instruction::new("LDA", ZeroPage, 3, false));
     opcodes[0xB5] = Some(Instruction::new("LDA", ZeroPageX, 4, false));

@@ -234,6 +234,7 @@ impl<'a> CPU<'a> {
         let (addr, page_cross) = self.fetch_operand_addr(inst.mode);
 
         match inst.name {
+            "ADC" => self.adc(addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -246,6 +247,18 @@ impl<'a> CPU<'a> {
         let cycles = inst.cycles + extra;
         self.cycles += cycles as u64;
         cycles
+    }
+
+    fn adc(&mut self, addr: u16) {
+        let value = self.read(addr);
+        let carry = if self.status & CARRY != 0 { 1u16 } else { 0 };
+        let sum = self.a as u16 + value as u16 + carry;
+
+        self.set_flag(CARRY, sum > 0xFF);
+        let result = sum as u8;
+        self.set_flag(OVERFLOW, (!(self.a ^ value) & (self.a ^ result)) & 0x80 != 0);
+        self.a = result;
+        self.update_zero_negative(self.a);
     }
 
     fn lda(&mut self, addr: u16) {
@@ -423,5 +436,94 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.a, 0xCC);
+    }
+
+    #[test]
+    fn adc_no_carry() {
+        let cart = test_cartridge(&[0x69, 0x20]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x10;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x30);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+        assert_eq!(cpu.status & OVERFLOW, 0);
+    }
+
+    #[test]
+    fn adc_with_carry_in() {
+        let cart = test_cartridge(&[0x69, 0x20]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x10;
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x31);
+        assert_eq!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn adc_carry_out() {
+        let cart = test_cartridge(&[0x69, 0x01]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xFF;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn adc_overflow_positive() {
+        // 正+正=負 → V=1
+        let cart = test_cartridge(&[0x69, 0x50]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0xA0);
+        assert_ne!(cpu.status & OVERFLOW, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn adc_overflow_negative() {
+        // 負+負=正 → V=1, C=1
+        let cart = test_cartridge(&[0x69, 0x80]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x80;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & OVERFLOW, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn adc_no_overflow_mixed_signs() {
+        // 正+負 → V=0
+        let cart = test_cartridge(&[0x69, 0xD0]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x50;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x20);
+        assert_eq!(cpu.status & OVERFLOW, 0);
+        assert_ne!(cpu.status & CARRY, 0);
     }
 }
