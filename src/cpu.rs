@@ -287,6 +287,7 @@ impl<'a> CPU<'a> {
             }
             "CLC" => self.set_flag(CARRY, false),
             "CLD" => self.set_flag(DECIMAL, false),
+            "CLI" => self.set_flag(INTERRUPT_DISABLE, false),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1044,5 +1045,18 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.status & DECIMAL, 0);
+    }
+
+    #[test]
+    fn cli() {
+        let cart = test_cartridge(&[0x58]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        // resetでIフラグはセット済み
+        assert_ne!(cpu.status & INTERRUPT_DISABLE, 0);
+        cpu.step();
+
+        assert_eq!(cpu.status & INTERRUPT_DISABLE, 0);
     }
 }
