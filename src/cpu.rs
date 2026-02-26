@@ -258,6 +258,7 @@ impl<'a> CPU<'a> {
                     self.branch(addr);
                 }
             }
+            "BIT" => self.bit(addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -290,6 +291,13 @@ impl<'a> CPU<'a> {
             self.cycles += 1;
         }
         self.pc = addr;
+    }
+
+    fn bit(&mut self, addr: u16) {
+        let value = self.read(addr);
+        self.set_flag(ZERO, self.a & value == 0);
+        self.set_flag(OVERFLOW, value & 0x40 != 0);
+        self.set_flag(NEGATIVE, value & 0x80 != 0);
     }
 
     fn and(&mut self, addr: u16) {
@@ -767,5 +775,53 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.pc, 0x8002);
+    }
+
+    #[test]
+    fn bit_zero_flag() {
+        // A & M == 0 → Z=1
+        let cart = test_cartridge(&[0x24, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x0F;
+        cpu.ram[0x10] = 0xF0;
+        cpu.step();
+
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+        assert_ne!(cpu.status & OVERFLOW, 0);
+    }
+
+    #[test]
+    fn bit_not_zero() {
+        // A & M != 0 → Z=0
+        let cart = test_cartridge(&[0x24, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xFF;
+        cpu.ram[0x10] = 0x3F;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+        assert_eq!(cpu.status & OVERFLOW, 0);
+    }
+
+    #[test]
+    fn bit_flags_from_memory() {
+        // N,V はメモリの値のbit7,bit6から取る（Aに関係なく）
+        let cart = test_cartridge(&[0x24, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xC0;
+        cpu.ram[0x10] = 0xC0;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+        assert_ne!(cpu.status & OVERFLOW, 0);
     }
 }
