@@ -286,6 +286,7 @@ impl<'a> CPU<'a> {
                 }
             }
             "CLC" => self.set_flag(CARRY, false),
+            "CLD" => self.set_flag(DECIMAL, false),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1031,5 +1032,17 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn cld() {
+        let cart = test_cartridge(&[0xD8]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= DECIMAL;
+        cpu.step();
+
+        assert_eq!(cpu.status & DECIMAL, 0);
     }
 }

@@ -70,6 +70,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x50] = Some(Instruction::new("BVC", Relative, 2, false));
     opcodes[0x70] = Some(Instruction::new("BVS", Relative, 2, false));
     opcodes[0x18] = Some(Instruction::new("CLC", Implicit, 2, false));
+    opcodes[0xD8] = Some(Instruction::new("CLD", Implicit, 2, false));
 
     opcodes[0x24] = Some(Instruction::new("BIT", ZeroPage, 3, false));
     opcodes[0x2C] = Some(Instruction::new("BIT", Absolute, 4, false));
