@@ -167,6 +167,14 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x38] = Some(Instruction::new("SEC", Implicit, 2, false));
     opcodes[0xF8] = Some(Instruction::new("SED", Implicit, 2, false));
     opcodes[0x78] = Some(Instruction::new("SEI", Implicit, 2, false));
+
+    opcodes[0x85] = Some(Instruction::new("STA", ZeroPage, 3, false));
+    opcodes[0x95] = Some(Instruction::new("STA", ZeroPageX, 4, false));
+    opcodes[0x8D] = Some(Instruction::new("STA", Absolute, 4, false));
+    opcodes[0x9D] = Some(Instruction::new("STA", AbsoluteX, 5, false));
+    opcodes[0x99] = Some(Instruction::new("STA", AbsoluteY, 5, false));
+    opcodes[0x81] = Some(Instruction::new("STA", IndirectX, 6, false));
+    opcodes[0x91] = Some(Instruction::new("STA", IndirectY, 6, false));
     opcodes[0x60] = Some(Instruction::new("RTS", Implicit, 6, false));
     opcodes[0x40] = Some(Instruction::new("RTI", Implicit, 6, false));
 

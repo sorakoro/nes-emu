@@ -360,6 +360,7 @@ impl<'a> CPU<'a> {
             "SEC" => self.set_flag(CARRY, true),
             "SED" => self.set_flag(DECIMAL, true),
             "SEI" => self.set_flag(INTERRUPT_DISABLE, true),
+            "STA" => self.write(addr, self.a),
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2106,5 +2107,29 @@ mod tests {
         cpu.step(); // SEI
 
         assert_ne!(cpu.status & INTERRUPT_DISABLE, 0);
+    }
+
+    #[test]
+    fn sta_zero_page() {
+        let cart = test_cartridge(&[0x85, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x42);
+    }
+
+    #[test]
+    fn sta_absolute() {
+        let cart = test_cartridge(&[0x8D, 0x00, 0x02]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x99;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x0200], 0x99);
     }
 }
