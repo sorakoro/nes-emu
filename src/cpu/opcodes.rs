@@ -115,6 +115,12 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xAE] = Some(Instruction::new("LDX", Absolute, 4, false));
     opcodes[0xBE] = Some(Instruction::new("LDX", AbsoluteY, 4, true));
 
+    opcodes[0xA0] = Some(Instruction::new("LDY", Immediate, 2, false));
+    opcodes[0xA4] = Some(Instruction::new("LDY", ZeroPage, 3, false));
+    opcodes[0xB4] = Some(Instruction::new("LDY", ZeroPageX, 4, false));
+    opcodes[0xAC] = Some(Instruction::new("LDY", Absolute, 4, false));
+    opcodes[0xBC] = Some(Instruction::new("LDY", AbsoluteX, 4, true));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));

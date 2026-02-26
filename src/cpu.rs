@@ -324,6 +324,10 @@ impl<'a> CPU<'a> {
                 self.x = self.read(addr);
                 self.update_zero_negative(self.x);
             }
+            "LDY" => {
+                self.y = self.read(addr);
+                self.update_zero_negative(self.y);
+            }
 
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1532,6 +1536,33 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.x, 0x99);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn ldy_immediate() {
+        let cart = test_cartridge(&[0xA0, 0x42]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.y, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn ldy_zero_page_x() {
+        let cart = test_cartridge(&[0xB4, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x05;
+        cpu.ram[0x15] = 0x99;
+        cpu.step();
+
+        assert_eq!(cpu.y, 0x99);
         assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }
