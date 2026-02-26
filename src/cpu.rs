@@ -275,6 +275,11 @@ impl<'a> CPU<'a> {
                 }
             }
             "BRK" => self.brk(),
+            "BVC" => {
+                if self.status & OVERFLOW == 0 {
+                    self.branch(addr);
+                }
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -962,5 +967,28 @@ mod tests {
         let pushed_status = cpu.ram[0x0100 + cpu.sp.wrapping_add(1) as usize];
         assert_ne!(pushed_status & BREAK, 0);
         assert_ne!(pushed_status & UNUSED, 0);
+    }
+
+    #[test]
+    fn bvc_branch_taken() {
+        let cart = test_cartridge(&[0x50, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8006);
+    }
+
+    #[test]
+    fn bvc_branch_not_taken() {
+        let cart = test_cartridge(&[0x50, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= OVERFLOW;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8002);
     }
 }
