@@ -155,6 +155,8 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x6E] = Some(Instruction::new("ROR", Absolute, 6, false));
     opcodes[0x7E] = Some(Instruction::new("ROR", AbsoluteX, 7, false));
 
+    opcodes[0x40] = Some(Instruction::new("RTI", Implicit, 6, false));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));

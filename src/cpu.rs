@@ -356,6 +356,12 @@ impl<'a> CPU<'a> {
             "PLP" => {
                 self.status = (self.pull() & !BREAK) | UNUSED;
             }
+            "RTI" => {
+                self.status = (self.pull() & !BREAK) | UNUSED;
+                let lo = self.pull() as u16;
+                let hi = self.pull() as u16;
+                self.pc = (hi << 8) | lo;
+            }
             "ROR" => {
                 if inst.mode == Accumulator {
                     let old_carry = if self.status & CARRY != 0 { 0x80 } else { 0 };
@@ -1896,5 +1902,34 @@ mod tests {
         assert_eq!(cpu.ram[0x10], 0x81);
         assert_ne!(cpu.status & CARRY, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn rti() {
+        // BRK → RTI の往復
+        let mut prg_rom = vec![0u8; 0x8000];
+        prg_rom[0] = 0x00; // BRK at $8000
+        // IRQハンドラ at $C000: RTI
+        prg_rom[0x4000] = 0x40;
+        prg_rom[0x7FFC] = 0x00;
+        prg_rom[0x7FFD] = 0x80;
+        prg_rom[0x7FFE] = 0x00;
+        prg_rom[0x7FFF] = 0xC0;
+        let cart = Cartridge::new_test(prg_rom);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= CARRY;
+
+        let status_before = cpu.status;
+        cpu.step(); // BRK
+        assert_eq!(cpu.pc, 0xC000);
+
+        cpu.step(); // RTI
+        assert_eq!(cpu.pc, 0x8001);
+        // Bフラグは無視、Uフラグは常にセット
+        assert_eq!(cpu.status & BREAK, 0);
+        assert_ne!(cpu.status & UNUSED, 0);
+        assert_ne!(cpu.status & CARRY, 0);
     }
 }
