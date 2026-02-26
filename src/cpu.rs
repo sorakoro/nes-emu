@@ -349,6 +349,10 @@ impl<'a> CPU<'a> {
             }
             "PHA" => self.push(self.a),
             "PHP" => self.push(self.status | BREAK | UNUSED),
+            "PLA" => {
+                self.a = self.pull();
+                self.update_zero_negative(self.a);
+            }
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1697,5 +1701,38 @@ mod tests {
         assert_ne!(pushed & UNUSED, 0);
         assert_ne!(pushed & CARRY, 0);
         assert_ne!(pushed & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn pla() {
+        // PHA then PLA
+        let cart = test_cartridge(&[0x48, 0xA9, 0x00, 0x68]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step(); // PHA
+        cpu.step(); // LDA #$00
+        assert_eq!(cpu.a, 0x00);
+        cpu.step(); // PLA
+
+        assert_eq!(cpu.a, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn pla_zero_flag() {
+        let cart = test_cartridge(&[0x68]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xFF;
+        // スタックに0をpush
+        cpu.push(0x00);
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
     }
 }
