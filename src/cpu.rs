@@ -297,6 +297,10 @@ impl<'a> CPU<'a> {
                 self.x = self.x.wrapping_sub(1);
                 self.update_zero_negative(self.x);
             }
+            "DEY" => {
+                self.y = self.y.wrapping_sub(1);
+                self.update_zero_negative(self.y);
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1253,6 +1257,33 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.x, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn dey() {
+        let cart = test_cartridge(&[0x88]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x05;
+        cpu.step();
+
+        assert_eq!(cpu.y, 0x04);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn dey_zero() {
+        let cart = test_cartridge(&[0x88]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x01;
+        cpu.step();
+
+        assert_eq!(cpu.y, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
     }
 }
