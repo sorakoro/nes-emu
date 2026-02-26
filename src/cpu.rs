@@ -236,6 +236,13 @@ impl<'a> CPU<'a> {
         match inst.name {
             "ADC" => self.adc(addr),
             "AND" => self.and(addr),
+            "ASL" => {
+                if inst.mode == Accumulator {
+                    self.asl_accumulator();
+                } else {
+                    self.asl_memory(addr);
+                }
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -265,6 +272,20 @@ impl<'a> CPU<'a> {
     fn and(&mut self, addr: u16) {
         self.a &= self.read(addr);
         self.update_zero_negative(self.a);
+    }
+
+    fn asl_accumulator(&mut self) {
+        self.set_flag(CARRY, self.a & 0x80 != 0);
+        self.a <<= 1;
+        self.update_zero_negative(self.a);
+    }
+
+    fn asl_memory(&mut self, addr: u16) {
+        let mut value = self.read(addr);
+        self.set_flag(CARRY, value & 0x80 != 0);
+        value <<= 1;
+        self.write(addr, value);
+        self.update_zero_negative(value);
     }
 
     fn lda(&mut self, addr: u16) {
@@ -570,6 +591,75 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.a, 0x80);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn asl_accumulator() {
+        let cart = test_cartridge(&[0x0A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x25;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x4A);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn asl_accumulator_carry() {
+        // bit7が1 → C=1
+        let cart = test_cartridge(&[0x0A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x81;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x02);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn asl_accumulator_zero() {
+        let cart = test_cartridge(&[0x0A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x80;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn asl_memory_zero_page() {
+        let cart = test_cartridge(&[0x06, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0x25;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x4A);
+        assert_eq!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn asl_memory_carry() {
+        let cart = test_cartridge(&[0x06, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0xC0;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x80);
+        assert_ne!(cpu.status & CARRY, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }

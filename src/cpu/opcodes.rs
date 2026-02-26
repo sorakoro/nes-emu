@@ -1,6 +1,6 @@
 use AddressingMode::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum AddressingMode {
     Implicit,
     Accumulator,
@@ -52,6 +52,12 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x79] = Some(Instruction::new("ADC", AbsoluteY, 4, true));
     opcodes[0x61] = Some(Instruction::new("ADC", IndirectX, 6, false));
     opcodes[0x71] = Some(Instruction::new("ADC", IndirectY, 5, true));
+
+    opcodes[0x0A] = Some(Instruction::new("ASL", Accumulator, 2, false));
+    opcodes[0x06] = Some(Instruction::new("ASL", ZeroPage, 5, false));
+    opcodes[0x16] = Some(Instruction::new("ASL", ZeroPageX, 6, false));
+    opcodes[0x0E] = Some(Instruction::new("ASL", Absolute, 6, false));
+    opcodes[0x1E] = Some(Instruction::new("ASL", AbsoluteX, 7, false));
 
     opcodes[0x29] = Some(Instruction::new("AND", Immediate, 2, false));
     opcodes[0x25] = Some(Instruction::new("AND", ZeroPage, 3, false));
