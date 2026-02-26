@@ -95,6 +95,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xD6] = Some(Instruction::new("DEC", ZeroPageX, 6, false));
     opcodes[0xCE] = Some(Instruction::new("DEC", Absolute, 6, false));
     opcodes[0xDE] = Some(Instruction::new("DEC", AbsoluteX, 7, false));
+    opcodes[0xCA] = Some(Instruction::new("DEX", Implicit, 2, false));
 
     opcodes[0x24] = Some(Instruction::new("BIT", ZeroPage, 3, false));
     opcodes[0x2C] = Some(Instruction::new("BIT", Absolute, 4, false));

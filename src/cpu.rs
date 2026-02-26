@@ -293,6 +293,10 @@ impl<'a> CPU<'a> {
             "CPX" => self.compare(self.x, addr),
             "CPY" => self.compare(self.y, addr),
             "DEC" => self.dec(addr),
+            "DEX" => {
+                self.x = self.x.wrapping_sub(1);
+                self.update_zero_negative(self.x);
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1223,5 +1227,32 @@ mod tests {
 
         assert_eq!(cpu.ram[0x10], 0xFF);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn dex() {
+        let cart = test_cartridge(&[0xCA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x05;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x04);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn dex_zero() {
+        let cart = test_cartridge(&[0xCA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x01;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
     }
 }
