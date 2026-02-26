@@ -320,6 +320,11 @@ impl<'a> CPU<'a> {
                 self.pc = addr;
             }
             "LDA" => self.lda(addr),
+            "LDX" => {
+                self.x = self.read(addr);
+                self.update_zero_negative(self.x);
+            }
+
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1501,5 +1506,32 @@ mod tests {
         let hi = cpu.ram[0x0100 + old_sp as usize];
         let lo = cpu.ram[0x0100 + old_sp.wrapping_sub(1) as usize];
         assert_eq!((hi as u16) << 8 | lo as u16, 0x8002);
+    }
+
+    #[test]
+    fn ldx_immediate() {
+        let cart = test_cartridge(&[0xA2, 0x42]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn ldx_zero_page_y() {
+        let cart = test_cartridge(&[0xB6, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.y = 0x05;
+        cpu.ram[0x15] = 0x99;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x99);
+        assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }

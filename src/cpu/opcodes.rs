@@ -109,6 +109,12 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x6C] = Some(Instruction::new("JMP", Indirect, 5, false));
     opcodes[0x20] = Some(Instruction::new("JSR", Absolute, 6, false));
 
+    opcodes[0xA2] = Some(Instruction::new("LDX", Immediate, 2, false));
+    opcodes[0xA6] = Some(Instruction::new("LDX", ZeroPage, 3, false));
+    opcodes[0xB6] = Some(Instruction::new("LDX", ZeroPageY, 4, false));
+    opcodes[0xAE] = Some(Instruction::new("LDX", Absolute, 4, false));
+    opcodes[0xBE] = Some(Instruction::new("LDX", AbsoluteY, 4, true));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));
