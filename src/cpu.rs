@@ -305,6 +305,7 @@ impl<'a> CPU<'a> {
                 self.a ^= self.read(addr);
                 self.update_zero_negative(self.a);
             }
+            "INC" => self.inc(addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -377,6 +378,12 @@ impl<'a> CPU<'a> {
         self.set_flag(ZERO, self.a & value == 0);
         self.set_flag(OVERFLOW, value & 0x40 != 0);
         self.set_flag(NEGATIVE, value & 0x80 != 0);
+    }
+
+    fn inc(&mut self, addr: u16) {
+        let value = self.read(addr).wrapping_add(1);
+        self.write(addr, value);
+        self.update_zero_negative(value);
     }
 
     fn dec(&mut self, addr: u16) {
@@ -1328,6 +1335,46 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.a, 0x80);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn inc() {
+        let cart = test_cartridge(&[0xE6, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0x05;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x06);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn inc_wrap() {
+        let cart = test_cartridge(&[0xE6, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0xFF;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn inc_negative() {
+        let cart = test_cartridge(&[0xE6, 0x10]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x10] = 0x7F;
+        cpu.step();
+
+        assert_eq!(cpu.ram[0x10], 0x80);
         assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }
