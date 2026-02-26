@@ -288,6 +288,7 @@ impl<'a> CPU<'a> {
             "CLC" => self.set_flag(CARRY, false),
             "CLD" => self.set_flag(DECIMAL, false),
             "CLI" => self.set_flag(INTERRUPT_DISABLE, false),
+            "CLV" => self.set_flag(OVERFLOW, false),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -333,7 +334,10 @@ impl<'a> CPU<'a> {
 
         self.set_flag(CARRY, sum > 0xFF);
         let result = sum as u8;
-        self.set_flag(OVERFLOW, (!(self.a ^ value) & (self.a ^ result)) & 0x80 != 0);
+        self.set_flag(
+            OVERFLOW,
+            (!(self.a ^ value) & (self.a ^ result)) & 0x80 != 0,
+        );
         self.a = result;
         self.update_zero_negative(self.a);
     }
@@ -1058,5 +1062,17 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.status & INTERRUPT_DISABLE, 0);
+    }
+
+    #[test]
+    fn clv() {
+        let cart = test_cartridge(&[0xB8]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= OVERFLOW;
+        cpu.step();
+
+        assert_eq!(cpu.status & OVERFLOW, 0);
     }
 }
