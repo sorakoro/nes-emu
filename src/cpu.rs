@@ -314,6 +314,7 @@ impl<'a> CPU<'a> {
                 self.y = self.y.wrapping_add(1);
                 self.update_zero_negative(self.y);
             }
+            "JMP" => self.pc = addr,
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1438,5 +1439,45 @@ mod tests {
 
         assert_eq!(cpu.y, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn jmp_absolute() {
+        let cart = test_cartridge(&[0x4C, 0x00, 0x90]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x9000);
+    }
+
+    #[test]
+    fn jmp_indirect() {
+        // $0200-$0201 に $9000 を格納
+        let cart = test_cartridge(&[0x6C, 0x00, 0x02]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x0200] = 0x00;
+        cpu.ram[0x0201] = 0x90;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x9000);
+    }
+
+    #[test]
+    fn jmp_indirect_page_boundary_bug() {
+        // $02FF-$0200 (not $0300) から読む6502バグの再現
+        let cart = test_cartridge(&[0x6C, 0xFF, 0x02]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.ram[0x02FF] = 0x40;
+        cpu.ram[0x0200] = 0x80; // $0300ではなく$0200から読む
+        cpu.ram[0x0300] = 0xFF; // これは使われない
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8040);
     }
 }
