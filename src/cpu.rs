@@ -243,6 +243,11 @@ impl<'a> CPU<'a> {
                     self.asl_memory(addr);
                 }
             }
+            "BCC" => {
+                if self.status & CARRY == 0 {
+                    self.branch(addr);
+                }
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -267,6 +272,14 @@ impl<'a> CPU<'a> {
         self.set_flag(OVERFLOW, (!(self.a ^ value) & (self.a ^ result)) & 0x80 != 0);
         self.a = result;
         self.update_zero_negative(self.a);
+    }
+
+    fn branch(&mut self, addr: u16) {
+        self.cycles += 1;
+        if (self.pc & 0xFF00) != (addr & 0xFF00) {
+            self.cycles += 1;
+        }
+        self.pc = addr;
     }
 
     fn and(&mut self, addr: u16) {
@@ -661,5 +674,42 @@ mod tests {
         assert_eq!(cpu.ram[0x10], 0x80);
         assert_ne!(cpu.status & CARRY, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn bcc_branch_taken() {
+        // C=0 → 分岐する: PC=$8002, offset=0x04 → $8006
+        let cart = test_cartridge(&[0x90, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8006);
+    }
+
+    #[test]
+    fn bcc_branch_not_taken() {
+        // C=1 → 分岐しない: PC=$8002
+        let cart = test_cartridge(&[0x90, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8002);
+    }
+
+    #[test]
+    fn bcc_branch_backward() {
+        // C=0, offset=0xFC(-4) → PC=$8002+(-4)=$7FFE
+        let cart = test_cartridge(&[0x90, 0xFC]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x7FFE);
     }
 }
