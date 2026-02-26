@@ -343,6 +343,10 @@ impl<'a> CPU<'a> {
             }
 
             "NOP" => {}
+            "ORA" => {
+                self.a |= self.read(addr);
+                self.update_zero_negative(self.a);
+            }
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
 
@@ -1632,5 +1636,32 @@ mod tests {
 
         assert_eq!(cpu.ram[0x10], 0x40);
         assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn ora_immediate() {
+        let cart = test_cartridge(&[0x09, 0xF0]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x0F;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0xFF);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+        assert_eq!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn ora_zero_flag() {
+        let cart = test_cartridge(&[0x09, 0x00]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x00;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
     }
 }

@@ -129,6 +129,15 @@ pub const OPCODES: [Option<Instruction>; 256] = {
 
     opcodes[0xEA] = Some(Instruction::new("NOP", Implicit, 2, false));
 
+    opcodes[0x09] = Some(Instruction::new("ORA", Immediate, 2, false));
+    opcodes[0x05] = Some(Instruction::new("ORA", ZeroPage, 3, false));
+    opcodes[0x15] = Some(Instruction::new("ORA", ZeroPageX, 4, false));
+    opcodes[0x0D] = Some(Instruction::new("ORA", Absolute, 4, false));
+    opcodes[0x1D] = Some(Instruction::new("ORA", AbsoluteX, 4, true));
+    opcodes[0x19] = Some(Instruction::new("ORA", AbsoluteY, 4, true));
+    opcodes[0x01] = Some(Instruction::new("ORA", IndirectX, 6, false));
+    opcodes[0x11] = Some(Instruction::new("ORA", IndirectY, 5, true));
+
     opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
     opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
     opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));
