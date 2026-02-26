@@ -98,6 +98,15 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0xCA] = Some(Instruction::new("DEX", Implicit, 2, false));
     opcodes[0x88] = Some(Instruction::new("DEY", Implicit, 2, false));
 
+    opcodes[0x49] = Some(Instruction::new("EOR", Immediate, 2, false));
+    opcodes[0x45] = Some(Instruction::new("EOR", ZeroPage, 3, false));
+    opcodes[0x55] = Some(Instruction::new("EOR", ZeroPageX, 4, false));
+    opcodes[0x4D] = Some(Instruction::new("EOR", Absolute, 4, false));
+    opcodes[0x5D] = Some(Instruction::new("EOR", AbsoluteX, 4, true));
+    opcodes[0x59] = Some(Instruction::new("EOR", AbsoluteY, 4, true));
+    opcodes[0x41] = Some(Instruction::new("EOR", IndirectX, 6, false));
+    opcodes[0x51] = Some(Instruction::new("EOR", IndirectY, 5, true));
+
     opcodes[0x24] = Some(Instruction::new("BIT", ZeroPage, 3, false));
     opcodes[0x2C] = Some(Instruction::new("BIT", Absolute, 4, false));
 

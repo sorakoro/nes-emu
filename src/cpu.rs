@@ -301,6 +301,10 @@ impl<'a> CPU<'a> {
                 self.y = self.y.wrapping_sub(1);
                 self.update_zero_negative(self.y);
             }
+            "EOR" => {
+                self.a ^= self.read(addr);
+                self.update_zero_negative(self.a);
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -1285,5 +1289,45 @@ mod tests {
 
         assert_eq!(cpu.y, 0x00);
         assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn eor_immediate() {
+        let cart = test_cartridge(&[0x49, 0xFF]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xAA;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x55);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn eor_zero_flag() {
+        let cart = test_cartridge(&[0x49, 0xFF]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0xFF;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+    }
+
+    #[test]
+    fn eor_negative_flag() {
+        let cart = test_cartridge(&[0x49, 0x0F]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x8F;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x80);
+        assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }
