@@ -248,6 +248,11 @@ impl<'a> CPU<'a> {
                     self.branch(addr);
                 }
             }
+            "BCS" => {
+                if self.status & CARRY != 0 {
+                    self.branch(addr);
+                }
+            }
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -711,5 +716,28 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.pc, 0x7FFE);
+    }
+
+    #[test]
+    fn bcs_branch_taken() {
+        let cart = test_cartridge(&[0xB0, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.status |= CARRY;
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8006);
+    }
+
+    #[test]
+    fn bcs_branch_not_taken() {
+        let cart = test_cartridge(&[0xB0, 0x04]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.step();
+
+        assert_eq!(cpu.pc, 0x8002);
     }
 }

@@ -60,6 +60,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x1E] = Some(Instruction::new("ASL", AbsoluteX, 7, false));
 
     opcodes[0x90] = Some(Instruction::new("BCC", Relative, 2, false));
+    opcodes[0xB0] = Some(Instruction::new("BCS", Relative, 2, false));
 
     opcodes[0x29] = Some(Instruction::new("AND", Immediate, 2, false));
     opcodes[0x25] = Some(Instruction::new("AND", ZeroPage, 3, false));
