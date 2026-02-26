@@ -289,6 +289,7 @@ impl<'a> CPU<'a> {
             "CLD" => self.set_flag(DECIMAL, false),
             "CLI" => self.set_flag(INTERRUPT_DISABLE, false),
             "CLV" => self.set_flag(OVERFLOW, false),
+            "CMP" => self.compare(self.a, addr),
             "LDA" => self.lda(addr),
             _ => panic!("Unimplemented instruction: {}", inst.name),
         }
@@ -348,6 +349,12 @@ impl<'a> CPU<'a> {
             self.cycles += 1;
         }
         self.pc = addr;
+    }
+
+    fn compare(&mut self, reg: u8, addr: u16) {
+        let value = self.read(addr);
+        self.set_flag(CARRY, reg >= value);
+        self.update_zero_negative(reg.wrapping_sub(value));
     }
 
     fn bit(&mut self, addr: u16) {
@@ -1074,5 +1081,46 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.status & OVERFLOW, 0);
+    }
+
+    #[test]
+    fn cmp_equal() {
+        let cart = test_cartridge(&[0xC9, 0x42]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step();
+
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn cmp_greater() {
+        let cart = test_cartridge(&[0xC9, 0x20]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & CARRY, 0);
+    }
+
+    #[test]
+    fn cmp_less() {
+        let cart = test_cartridge(&[0xC9, 0x50]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & CARRY, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }

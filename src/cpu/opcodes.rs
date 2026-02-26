@@ -74,6 +74,15 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x58] = Some(Instruction::new("CLI", Implicit, 2, false));
     opcodes[0xB8] = Some(Instruction::new("CLV", Implicit, 2, false));
 
+    opcodes[0xC9] = Some(Instruction::new("CMP", Immediate, 2, false));
+    opcodes[0xC5] = Some(Instruction::new("CMP", ZeroPage, 3, false));
+    opcodes[0xD5] = Some(Instruction::new("CMP", ZeroPageX, 4, false));
+    opcodes[0xCD] = Some(Instruction::new("CMP", Absolute, 4, false));
+    opcodes[0xDD] = Some(Instruction::new("CMP", AbsoluteX, 4, true));
+    opcodes[0xD9] = Some(Instruction::new("CMP", AbsoluteY, 4, true));
+    opcodes[0xC1] = Some(Instruction::new("CMP", IndirectX, 6, false));
+    opcodes[0xD1] = Some(Instruction::new("CMP", IndirectY, 5, true));
+
     opcodes[0x24] = Some(Instruction::new("BIT", ZeroPage, 3, false));
     opcodes[0x2C] = Some(Instruction::new("BIT", Absolute, 4, false));
 
