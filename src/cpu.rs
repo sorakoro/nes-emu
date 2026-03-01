@@ -547,7 +547,12 @@ impl<'a> CPU<'a> {
     }
 
     pub fn nmi(&mut self) {
-        // TODO: NMI割り込み処理
+        self.push_u16(self.pc);
+        self.push((self.status & !BREAK) | UNUSED);
+        self.set_flag(INTERRUPT_DISABLE, true);
+        let lo = self.read(0xFFFA) as u16;
+        let hi = self.read(0xFFFB) as u16;
+        self.pc = (hi << 8) | lo;
     }
 
     pub fn irq(&mut self) {
