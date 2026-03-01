@@ -363,6 +363,10 @@ impl<'a> CPU<'a> {
             "STA" => self.write(addr, self.a),
             "STX" => self.write(addr, self.x),
             "STY" => self.write(addr, self.y),
+            "TAX" => {
+                self.x = self.a;
+                self.update_zero_negative(self.x);
+            }
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2157,5 +2161,47 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.ram[0x10], 0x42);
+    }
+
+    #[test]
+    fn tax() {
+        let cart = test_cartridge(&[0xAA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn tax_zero() {
+        let cart = test_cartridge(&[0xAA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x00;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn tax_negative() {
+        let cart = test_cartridge(&[0xAA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.a = 0x80;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x80);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
     }
 }
