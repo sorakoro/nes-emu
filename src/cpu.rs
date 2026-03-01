@@ -219,7 +219,7 @@ impl<'a> CPU<'a> {
         }
     }
 
-    pub fn step(&mut self) -> u8 {
+    pub fn step(&mut self) {
         let opcode = self.fetch();
 
         let inst = match OPCODES[opcode as usize] {
@@ -437,7 +437,14 @@ impl<'a> CPU<'a> {
         };
         let cycles = inst.cycles + extra;
         self.cycles += cycles as u64;
-        cycles
+
+        let ppu_cycles = cycles as u16 * 3;
+        for _ in 0..ppu_cycles {
+            self.ppu.tick();
+        }
+        if self.ppu.poll_nmi() {
+            self.nmi();
+        }
     }
 
     fn push(&mut self, value: u8) {
