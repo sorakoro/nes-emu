@@ -185,6 +185,7 @@ pub const OPCODES: [Option<Instruction>; 256] = {
     opcodes[0x8C] = Some(Instruction::new("STY", Absolute, 4, false));
 
     opcodes[0xAA] = Some(Instruction::new("TAX", Implicit, 2, false));
+    opcodes[0xA8] = Some(Instruction::new("TAY", Implicit, 2, false));
     opcodes[0x60] = Some(Instruction::new("RTS", Implicit, 6, false));
     opcodes[0x40] = Some(Instruction::new("RTI", Implicit, 6, false));
 
