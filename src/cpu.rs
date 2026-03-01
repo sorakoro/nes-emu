@@ -375,6 +375,10 @@ impl<'a> CPU<'a> {
                 self.x = self.sp;
                 self.update_zero_negative(self.x);
             }
+            "TXA" => {
+                self.a = self.x;
+                self.update_zero_negative(self.a);
+            }
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2293,6 +2297,48 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.x, 0xFD);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn txa() {
+        let cart = test_cartridge(&[0x8A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn txa_zero() {
+        let cart = test_cartridge(&[0x8A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x00;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn txa_negative() {
+        let cart = test_cartridge(&[0x8A]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.x = 0x80;
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x80);
         assert_eq!(cpu.status & ZERO, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
     }
