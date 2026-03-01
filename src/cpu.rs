@@ -371,6 +371,10 @@ impl<'a> CPU<'a> {
                 self.y = self.a;
                 self.update_zero_negative(self.y);
             }
+            "TSX" => {
+                self.x = self.sp;
+                self.update_zero_negative(self.x);
+            }
             "RTS" => {
                 let lo = self.pull() as u16;
                 let hi = self.pull() as u16;
@@ -2247,6 +2251,48 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.y, 0x80);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_ne!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn tsx() {
+        let cart = test_cartridge(&[0xBA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.sp = 0x42;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x42);
+        assert_eq!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn tsx_zero() {
+        let cart = test_cartridge(&[0xBA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.sp = 0x00;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0x00);
+        assert_ne!(cpu.status & ZERO, 0);
+        assert_eq!(cpu.status & NEGATIVE, 0);
+    }
+
+    #[test]
+    fn tsx_negative() {
+        let cart = test_cartridge(&[0xBA]);
+        let mut ppu = PPU::new(&cart);
+        let mut cpu = CPU::new(&mut ppu, &cart);
+        cpu.reset();
+        cpu.sp = 0xFD;
+        cpu.step();
+
+        assert_eq!(cpu.x, 0xFD);
         assert_eq!(cpu.status & ZERO, 0);
         assert_ne!(cpu.status & NEGATIVE, 0);
     }
