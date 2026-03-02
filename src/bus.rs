@@ -41,7 +41,7 @@ impl Bus {
             0x2000..=0x3FFF => {
                 let mirror_addr = 0x2000 + (addr & 0x0007);
                 self.ppu
-                    .write_register(mirror_addr, value, &self.cartridge);
+                    .write_register(mirror_addr, value, &mut self.cartridge);
             }
             0x8000..=0xFFFF => {
                 panic!("Attempted to write to ROM at ${:04X}", addr)

@@ -7,6 +7,7 @@ const CHR_ROM_PAGE_SIZE: usize = 0x2000;
 pub struct Cartridge {
     is_vertical_mirroring: bool,
     mapper: u8,
+    has_chr_ram: bool,
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
 }
@@ -33,8 +34,13 @@ impl Cartridge {
         Ok(Cartridge {
             is_vertical_mirroring,
             mapper,
+            has_chr_ram: chr_rom_pages == 0,
             prg_rom: raw[prg_rom_start..prg_rom_start + prg_rom_size].to_vec(),
-            chr_rom: raw[chr_rom_start..chr_rom_start + chr_rom_size].to_vec(),
+            chr_rom: if chr_rom_pages > 0 {
+                raw[chr_rom_start..chr_rom_start + chr_rom_size].to_vec()
+            } else {
+                vec![0; CHR_ROM_PAGE_SIZE]
+            },
         })
     }
 
@@ -47,6 +53,12 @@ impl Cartridge {
         self.chr_rom[addr as usize]
     }
 
+    pub fn write_chr_ram(&mut self, addr: u16, value: u8) {
+        if self.has_chr_ram {
+            self.chr_rom[addr as usize] = value;
+        }
+    }
+
     pub fn is_vertical_mirroring(&self) -> bool {
         self.is_vertical_mirroring
     }
@@ -56,6 +68,7 @@ impl Cartridge {
         Cartridge {
             is_vertical_mirroring: false,
             mapper: 0,
+            has_chr_ram: true,
             prg_rom,
             chr_rom: vec![0; 0x2000],
         }

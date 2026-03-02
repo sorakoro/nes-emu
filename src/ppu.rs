@@ -127,7 +127,7 @@ impl Ppu {
         }
     }
 
-    pub fn write_register(&mut self, addr: u16, value: u8, cart: &Cartridge) {
+    pub fn write_register(&mut self, addr: u16, value: u8, cart: &mut Cartridge) {
         match addr {
             0x2000 => self.ctrl.update(value),
             0x2001 => self.mask.update(value),
@@ -144,16 +144,13 @@ impl Ppu {
         }
     }
 
-    fn write_data(&mut self, value: u8, cart: &Cartridge) {
+    fn write_data(&mut self, value: u8, cart: &mut Cartridge) {
         let addr = self.addr.read();
         self.addr.increment(self.ctrl.vram_increment());
 
         match addr {
             0x0000..=0x1FFF => {
-                panic!(
-                    "Attempted to write to CHR-ROM at ${:04X} (read-only for Mapper 0)",
-                    addr
-                )
+                cart.write_chr_ram(addr, value);
             }
             0x2000..=0x3EFF => {
                 let vram_addr = self.mirror_vram_addr(addr, cart);
