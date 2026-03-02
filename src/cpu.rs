@@ -219,7 +219,7 @@ impl<'a> CPU<'a> {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> bool {
         let opcode = self.fetch();
 
         let inst = match OPCODES[opcode as usize] {
@@ -445,6 +445,12 @@ impl<'a> CPU<'a> {
         if self.ppu.poll_nmi() {
             self.nmi();
         }
+
+        if self.ppu.frame_ready {
+            self.ppu.frame_ready = false;
+            return true;
+        }
+        false
     }
 
     fn push(&mut self, value: u8) {

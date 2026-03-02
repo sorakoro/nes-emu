@@ -22,7 +22,9 @@ fn run() -> Result<(), String> {
     cpu.reset();
 
     loop {
-        cpu.step();
+        if cpu.step() {
+            // TODO: render frame
+        }
     }
 }
 
