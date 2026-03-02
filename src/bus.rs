@@ -56,6 +56,14 @@ impl Bus {
         }
     }
 
+    pub fn peek(&self, addr: u16) -> u8 {
+        match addr {
+            0x0000..=0x1FFF => self.ram[(addr & 0x07FF) as usize],
+            0x8000..=0xFFFF => self.cartridge.read_prg_rom(addr),
+            _ => 0,
+        }
+    }
+
     pub fn tick_ppu(&mut self, cycles: u16) {
         for _ in 0..cycles {
             self.ppu.tick(&self.cartridge);

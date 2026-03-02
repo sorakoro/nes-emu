@@ -22,6 +22,7 @@ pub struct Cpu {
     status: u8,
 
     cycles: u64,
+    pub trace: bool,
 }
 
 impl Cpu {
@@ -35,7 +36,67 @@ impl Cpu {
             status: UNUSED | INTERRUPT_DISABLE,
 
             cycles: 0,
+            trace: false,
         }
+    }
+
+    fn trace_instruction(&self, bus: &Bus) {
+        let pc = self.pc;
+        let opcode = bus.peek(pc);
+        let inst = match OPCODES[opcode as usize] {
+            Some(inst) => inst,
+            None => {
+                println!("{:04X}  {:02X}        ???", pc, opcode);
+                return;
+            }
+        };
+
+        let b1 = bus.peek(pc.wrapping_add(1));
+        let b2 = bus.peek(pc.wrapping_add(2));
+
+        let raw_bytes = match inst.mode {
+            Implicit | Accumulator => format!("{:02X}         ", opcode),
+            Immediate | ZeroPage | ZeroPageX | ZeroPageY | Relative | IndirectX | IndirectY => {
+                format!("{:02X} {:02X}      ", opcode, b1)
+            }
+            Absolute | AbsoluteX | AbsoluteY | Indirect => {
+                format!("{:02X} {:02X} {:02X}   ", opcode, b1, b2)
+            }
+        };
+
+        let addr16 = (b2 as u16) << 8 | b1 as u16;
+        let operand = match inst.mode {
+            Implicit => String::new(),
+            Accumulator => "A".to_string(),
+            Immediate => format!("#${:02X}", b1),
+            ZeroPage => format!("${:02X}", b1),
+            ZeroPageX => format!("${:02X},X", b1),
+            ZeroPageY => format!("${:02X},Y", b1),
+            Absolute => format!("${:04X}", addr16),
+            AbsoluteX => format!("${:04X},X", addr16),
+            AbsoluteY => format!("${:04X},Y", addr16),
+            Indirect => format!("(${:04X})", addr16),
+            IndirectX => format!("(${:02X},X)", b1),
+            IndirectY => format!("(${:02X}),Y", b1),
+            Relative => {
+                let offset = b1 as i8;
+                let target = pc.wrapping_add(2).wrapping_add(offset as u16);
+                format!("${:04X}", target)
+            }
+        };
+
+        println!(
+            "{:04X}  {}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
+            pc,
+            raw_bytes,
+            format!("{} {}", inst.name, operand),
+            self.a,
+            self.x,
+            self.y,
+            self.status,
+            self.sp,
+            self.cycles
+        );
     }
 
     pub fn reset(&mut self, bus: &mut Bus) {
@@ -175,6 +236,9 @@ impl Cpu {
     }
 
     pub fn step(&mut self, bus: &mut Bus) -> bool {
+        if self.trace {
+            self.trace_instruction(bus);
+        }
         let opcode = self.fetch(bus);
 
         let inst = match OPCODES[opcode as usize] {

@@ -73,6 +73,13 @@ fn run() -> Result<(), String> {
                         keycode: Some(Keycode::Escape),
                         ..
                     } => break 'running,
+                    Event::KeyDown {
+                        keycode: Some(Keycode::T),
+                        ..
+                    } => {
+                        cpu.trace = !cpu.trace;
+                        eprintln!("CPU trace: {}", if cpu.trace { "ON" } else { "OFF" });
+                    }
                     _ => {}
                 }
             }
