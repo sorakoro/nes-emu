@@ -58,7 +58,9 @@ impl Cpu {
             let start_addr = page * 0x100;
             let data: [u8; 256] = std::array::from_fn(|i| bus.read(start_addr + i as u16));
             bus.ppu.write_oam_dma(&data);
-            self.cycles += 513 + (self.cycles & 1);
+            let dma_cpu_cycles = 513 + (self.cycles & 1);
+            self.cycles += dma_cpu_cycles;
+            bus.tick_ppu(dma_cpu_cycles as u16 * 3);
         } else {
             bus.write(addr, value);
         }

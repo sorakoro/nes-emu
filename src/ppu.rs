@@ -46,7 +46,7 @@ pub struct Ppu {
     nmi_occurred: bool,
     pub frame_ready: bool,
     pub frame_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
-    bg_opaque: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
+    bg_opaque: [bool; SCREEN_WIDTH],
 }
 
 impl Ppu {
@@ -71,7 +71,7 @@ impl Ppu {
             nmi_occurred: false,
             frame_ready: false,
             frame_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
-            bg_opaque: [false; SCREEN_WIDTH * SCREEN_HEIGHT],
+            bg_opaque: [false; SCREEN_WIDTH],
         }
     }
 
@@ -207,115 +207,143 @@ impl Ppu {
         self.oam.copy_from_slice(value);
     }
 
-    fn render_background(&mut self, cart: &Cartridge) {
-        self.bg_opaque = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+    // --- Loopy register helpers ---
+
+    fn increment_y(&mut self) {
+        if (self.v & 0x7000) != 0x7000 {
+            self.v += 0x1000; // fine_y++
+        } else {
+            self.v &= !0x7000; // fine_y = 0
+            let mut coarse_y = (self.v & 0x03E0) >> 5;
+            if coarse_y == 29 {
+                coarse_y = 0;
+                self.v ^= 0x0800; // toggle nametable Y
+            } else if coarse_y == 31 {
+                coarse_y = 0; // wrap without toggle
+            } else {
+                coarse_y += 1;
+            }
+            self.v = (self.v & !0x03E0) | (coarse_y << 5);
+        }
+    }
+
+    fn copy_horizontal_t_to_v(&mut self) {
+        self.v = (self.v & 0xFBE0) | (self.t & 0x041F);
+    }
+
+    fn copy_vertical_t_to_v(&mut self) {
+        self.v = (self.v & 0x041F) | (self.t & 0x7BE0);
+    }
+
+    // --- Per-scanline renderers ---
+
+    fn render_scanline_bg(&mut self, scanline: usize, cart: &Cartridge) {
+        self.bg_opaque = [false; SCREEN_WIDTH];
+
+        let fb_row_offset = scanline * SCREEN_WIDTH * 3;
+
+        // Fill scanline with universal background color
+        let bg_color = self.palette_ram[0] as usize;
+        let bg_rgb = NES_PALETTE[bg_color & 0x3F];
+        for px in 0..SCREEN_WIDTH {
+            let offset = fb_row_offset + px * 3;
+            self.frame_buffer[offset] = bg_rgb[0];
+            self.frame_buffer[offset + 1] = bg_rgb[1];
+            self.frame_buffer[offset + 2] = bg_rgb[2];
+        }
+
+        if !self.mask.show_background() {
+            return;
+        }
+
         let pattern_base = self.ctrl.bg_pattern_addr();
 
-        // Extract scroll position from t register
-        let coarse_x = self.t & 0x001F;
-        let coarse_y = (self.t >> 5) & 0x001F;
-        let base_nt = (self.t >> 10) & 0x0003;
-        let fine_y = (self.t >> 12) & 0x0007;
+        // Read scroll position from v register
+        let coarse_x = self.v & 0x001F;
+        let coarse_y = (self.v >> 5) & 0x001F;
+        let nt = (self.v >> 10) & 0x0003;
+        let fine_y = (self.v >> 12) & 0x0007;
 
-        let tile_cols = if self.fine_x > 0 { 33u16 } else { 32u16 };
-        let tile_rows = if fine_y > 0 { 31u16 } else { 30u16 };
+        let tile_cols: u16 = if self.fine_x > 0 { 33 } else { 32 };
 
-        for ty in 0..tile_rows {
-            for tx in 0..tile_cols {
-                let mut nt = base_nt;
-                let mut cur_x = coarse_x + tx;
-                let mut cur_y = coarse_y + ty;
+        for tx in 0..tile_cols {
+            let mut cur_x = coarse_x + tx;
+            let mut cur_nt = nt;
 
-                // X wrapping: at tile 32, flip horizontal nametable
-                if cur_x >= 32 {
-                    cur_x -= 32;
-                    nt ^= 1;
+            if cur_x >= 32 {
+                cur_x -= 32;
+                cur_nt ^= 1;
+            }
+
+            let nametable_addr = 0x2000 + cur_nt * 0x400 + coarse_y * 32 + cur_x;
+            let vram_offset = self.mirror_vram_addr(nametable_addr, cart);
+            let tile_index = self.vram[vram_offset as usize] as u16;
+
+            let attr_addr = 0x2000 + cur_nt * 0x400 + 0x3C0 + (coarse_y / 4) * 8 + (cur_x / 4);
+            let attr_offset = self.mirror_vram_addr(attr_addr, cart);
+            let attr_byte = self.vram[attr_offset as usize];
+            let shift = ((coarse_y % 4) / 2 * 2 + (cur_x % 4) / 2) * 2;
+            let palette_index = ((attr_byte >> shift) & 0x03) as u16;
+
+            let tile_addr = pattern_base + tile_index * 16 + fine_y;
+            let lo = cart.read_chr_rom(tile_addr);
+            let hi = cart.read_chr_rom(tile_addr + 8);
+
+            for col in 0..8u16 {
+                let screen_x = tx as i16 * 8 - self.fine_x as i16 + col as i16;
+                if screen_x < 0 || screen_x >= 256 {
+                    continue;
+                }
+                let px = screen_x as usize;
+
+                if px < 8 && !self.mask.show_bg_leftmost() {
+                    continue;
                 }
 
-                // Y wrapping: at row 30, flip vertical nametable
-                while cur_y >= 30 {
-                    cur_y -= 30;
-                    nt ^= 2;
+                let bit = 7 - col;
+                let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+
+                if color_index == 0 {
+                    continue;
                 }
 
-                let nametable_addr = 0x2000 + nt * 0x400 + cur_y * 32 + cur_x;
-                let vram_offset = self.mirror_vram_addr(nametable_addr, cart);
-                let tile_index = self.vram[vram_offset as usize] as u16;
+                self.bg_opaque[px] = true;
+                let palette_addr = (palette_index * 4 + color_index as u16) as usize;
+                let nes_color = self.palette_ram[palette_addr] as usize;
+                let rgb = NES_PALETTE[nes_color & 0x3F];
 
-                // attribute table
-                let attr_addr = 0x2000 + nt * 0x400 + 0x3C0 + (cur_y / 4) * 8 + (cur_x / 4);
-                let attr_offset = self.mirror_vram_addr(attr_addr, cart);
-                let attr_byte = self.vram[attr_offset as usize];
-                let shift = ((cur_y % 4) / 2 * 2 + (cur_x % 4) / 2) * 2;
-                let palette_index = ((attr_byte >> shift) & 0x03) as u16;
-
-                let tile_addr = pattern_base + tile_index * 16;
-
-                for row in 0..8u16 {
-                    let screen_y = ty as i16 * 8 - fine_y as i16 + row as i16;
-                    if screen_y < 0 || screen_y >= 240 {
-                        continue;
-                    }
-                    let py = screen_y as usize;
-
-                    let lo = cart.read_chr_rom(tile_addr + row);
-                    let hi = cart.read_chr_rom(tile_addr + row + 8);
-
-                    for col in 0..8u16 {
-                        let screen_x = tx as i16 * 8 - self.fine_x as i16 + col as i16;
-                        if screen_x < 0 || screen_x >= 256 {
-                            continue;
-                        }
-                        let px = screen_x as usize;
-
-                        let bit = 7 - col;
-                        let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-
-                        let palette_addr = if color_index == 0 {
-                            0
-                        } else {
-                            self.bg_opaque[py * SCREEN_WIDTH + px] = true;
-                            (palette_index * 4 + color_index as u16) as usize
-                        };
-                        let nes_color = self.palette_ram[palette_addr] as usize;
-                        let rgb = NES_PALETTE[nes_color & 0x3F];
-
-                        let offset = (py * SCREEN_WIDTH + px) * 3;
-                        self.frame_buffer[offset] = rgb[0];
-                        self.frame_buffer[offset + 1] = rgb[1];
-                        self.frame_buffer[offset + 2] = rgb[2];
-                    }
-                }
+                let offset = fb_row_offset + px * 3;
+                self.frame_buffer[offset] = rgb[0];
+                self.frame_buffer[offset + 1] = rgb[1];
+                self.frame_buffer[offset + 2] = rgb[2];
             }
         }
     }
 
-    fn render_sprites(&mut self, cart: &Cartridge) {
+    fn render_scanline_sprites(&mut self, scanline: usize, cart: &Cartridge) {
         if !self.mask.show_sprites() {
             return;
         }
 
         let sprite_height = self.ctrl.sprite_size() as u16;
+        let sl = scanline as u16;
 
-        // Sprite overflow detection: count sprites per scanline
-        for scanline in 0..240u16 {
-            let mut count = 0u8;
-            for i in 0..64 {
-                let y = self.oam[i * 4] as u16 + 1;
-                if scanline >= y && scanline < y + sprite_height {
-                    count += 1;
-                    if count > 8 {
-                        self.status.set_sprite_overflow(true);
-                        break;
-                    }
+        // Forward scan: count sprites on this scanline for overflow detection
+        let mut count = 0u8;
+        for i in 0..64 {
+            let y = self.oam[i * 4] as u16 + 1;
+            if sl >= y && sl < y + sprite_height {
+                count += 1;
+                if count > 8 {
+                    self.status.set_sprite_overflow(true);
+                    break;
                 }
-            }
-            if count > 8 {
-                break;
             }
         }
 
-        // Draw sprites in reverse order (63→0) so lower index sprites appear on top
+        let fb_row_offset = scanline * SCREEN_WIDTH * 3;
+
+        // Reverse scan: draw sprites (lower index on top)
         for i in (0..64).rev() {
             let oam_offset = i * 4;
             let sprite_y = self.oam[oam_offset] as u16 + 1;
@@ -323,79 +351,69 @@ impl Ppu {
             let attributes = self.oam[oam_offset + 2];
             let sprite_x = self.oam[oam_offset + 3] as usize;
 
+            if sl < sprite_y || sl >= sprite_y + sprite_height {
+                continue;
+            }
+
             let palette_index = (attributes & 0x03) as u16;
             let behind_bg = attributes & 0x20 != 0;
             let flip_h = attributes & 0x40 != 0;
             let flip_v = attributes & 0x80 != 0;
 
-            for row in 0..sprite_height {
-                let py = sprite_y + row;
-                if py >= 240 {
+            let row = sl - sprite_y;
+            let actual_row = if flip_v { sprite_height - 1 - row } else { row };
+
+            let (pattern_base, tile_num) = if sprite_height == 16 {
+                let bank = (tile_index & 1) * 0x1000;
+                let base_tile = tile_index & 0xFE;
+                if actual_row < 8 {
+                    (bank, base_tile)
+                } else {
+                    (bank, base_tile + 1)
+                }
+            } else {
+                (self.ctrl.sprite_pattern_addr(), tile_index)
+            };
+
+            let tile_row = actual_row % 8;
+            let tile_addr = pattern_base + tile_num * 16 + tile_row;
+            let lo = cart.read_chr_rom(tile_addr);
+            let hi = cart.read_chr_rom(tile_addr + 8);
+
+            for col in 0..8u16 {
+                let px = sprite_x + col as usize;
+                if px >= 256 {
                     continue;
                 }
 
-                let actual_row = if flip_v { sprite_height - 1 - row } else { row };
-
-                let (pattern_base, tile_num) = if sprite_height == 16 {
-                    // 8x16 mode: bit 0 of tile index selects pattern table
-                    let bank = (tile_index & 1) * 0x1000;
-                    let base_tile = tile_index & 0xFE;
-                    if actual_row < 8 {
-                        (bank, base_tile)
-                    } else {
-                        (bank, base_tile + 1)
-                    }
-                } else {
-                    // 8x8 mode
-                    (self.ctrl.sprite_pattern_addr(), tile_index)
-                };
-
-                let tile_row = actual_row % 8;
-                let tile_addr = pattern_base + tile_num * 16 + tile_row;
-                let lo = cart.read_chr_rom(tile_addr);
-                let hi = cart.read_chr_rom(tile_addr + 8);
-
-                for col in 0..8u16 {
-                    let px = sprite_x + col as usize;
-                    if px >= 256 {
-                        continue;
-                    }
-
-                    // Left 8px clipping
-                    if px < 8 && !self.mask.show_sprites_leftmost() {
-                        continue;
-                    }
-
-                    let bit = if flip_h { col } else { 7 - col };
-                    let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-
-                    // Transparent pixel
-                    if color_index == 0 {
-                        continue;
-                    }
-
-                    let pixel_idx = py as usize * SCREEN_WIDTH + px;
-
-                    // Sprite 0 Hit: sprite 0 opaque pixel overlaps opaque BG pixel
-                    // Does not trigger at x=255
-                    if i == 0 && self.bg_opaque[pixel_idx] && px != 255 {
-                        self.status.set_sprite_zero_hit(true);
-                    }
-
-                    // Behind-BG priority: don't draw sprite if BG is opaque
-                    if behind_bg && self.bg_opaque[pixel_idx] {
-                        continue;
-                    }
-
-                    let palette_addr = (0x10 + palette_index * 4 + color_index as u16) as usize;
-                    let nes_color = self.palette_ram[palette_addr] as usize;
-                    let rgb = NES_PALETTE[nes_color & 0x3F];
-
-                    let fb_offset = pixel_idx * 3;
-                    self.frame_buffer[fb_offset] = rgb[0];
-                    self.frame_buffer[fb_offset + 1] = rgb[1];
-                    self.frame_buffer[fb_offset + 2] = rgb[2];
+                if px < 8 && !self.mask.show_sprites_leftmost() {
+                    continue;
                 }
+
+                let bit = if flip_h { col } else { 7 - col };
+                let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+
+                if color_index == 0 {
+                    continue;
+                }
+
+                // Sprite 0 Hit: opaque sprite 0 pixel overlaps opaque BG pixel
+                if i == 0 && self.bg_opaque[px] && px != 255 {
+                    self.status.set_sprite_zero_hit(true);
+                }
+
+                if behind_bg && self.bg_opaque[px] {
+                    continue;
+                }
+
+                let palette_addr = (0x10 + palette_index * 4 + color_index as u16) as usize;
+                let nes_color = self.palette_ram[palette_addr] as usize;
+                let rgb = NES_PALETTE[nes_color & 0x3F];
+
+                let fb_offset = fb_row_offset + px * 3;
+                self.frame_buffer[fb_offset] = rgb[0];
+                self.frame_buffer[fb_offset + 1] = rgb[1];
+                self.frame_buffer[fb_offset + 2] = rgb[2];
             }
         }
     }
@@ -412,20 +430,47 @@ impl Ppu {
             }
         }
 
-        if self.scanline == 241 && self.cycles == 1 {
-            self.render_background(cart);
-            self.render_sprites(cart);
-            self.frame_ready = true;
-            self.status.set_vblank(true);
-            if self.ctrl.generate_nmi() {
-                self.nmi_occurred = true;
-            }
-        }
+        let rendering = self.mask.rendering_enabled();
 
-        if self.scanline == 261 && self.cycles == 1 {
-            self.status.set_vblank(false);
-            self.status.set_sprite_zero_hit(false);
-            self.status.set_sprite_overflow(false);
+        match self.scanline {
+            // Visible scanlines
+            0..=239 => {
+                if self.cycles == 1 {
+                    self.render_scanline_bg(self.scanline as usize, cart);
+                    self.render_scanline_sprites(self.scanline as usize, cart);
+                }
+                if rendering && self.cycles == 256 {
+                    self.increment_y();
+                }
+                if rendering && self.cycles == 257 {
+                    self.copy_horizontal_t_to_v();
+                }
+            }
+            // VBlank start
+            241 => {
+                if self.cycles == 1 {
+                    self.frame_ready = true;
+                    self.status.set_vblank(true);
+                    if self.ctrl.generate_nmi() {
+                        self.nmi_occurred = true;
+                    }
+                }
+            }
+            // Pre-render scanline
+            261 => {
+                if self.cycles == 1 {
+                    self.status.set_vblank(false);
+                    self.status.set_sprite_zero_hit(false);
+                    self.status.set_sprite_overflow(false);
+                }
+                if rendering && self.cycles == 257 {
+                    self.copy_horizontal_t_to_v();
+                }
+                if rendering && self.cycles == 280 {
+                    self.copy_vertical_t_to_v();
+                }
+            }
+            _ => {}
         }
     }
 
