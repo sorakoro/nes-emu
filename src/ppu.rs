@@ -6,6 +6,26 @@ use registers::{AddrReg, CtrlReg, MaskReg, StatusReg};
 pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
 
+#[rustfmt::skip]
+const NES_PALETTE: [[u8; 3]; 64] = [
+    [84, 84, 84],    [0, 30, 116],    [8, 16, 144],    [48, 0, 136],
+    [68, 0, 100],    [92, 0, 48],     [84, 4, 0],      [60, 24, 0],
+    [32, 42, 0],     [8, 58, 0],      [0, 64, 0],      [0, 60, 0],
+    [0, 50, 60],     [0, 0, 0],       [0, 0, 0],       [0, 0, 0],
+    [152, 150, 152], [8, 76, 196],    [48, 50, 236],   [92, 30, 228],
+    [136, 20, 176],  [160, 20, 100],  [152, 34, 32],   [120, 60, 0],
+    [84, 90, 0],     [40, 114, 0],    [8, 124, 0],     [0, 118, 40],
+    [0, 102, 120],   [0, 0, 0],       [0, 0, 0],       [0, 0, 0],
+    [236, 238, 236], [76, 154, 236],  [120, 124, 236], [176, 98, 236],
+    [228, 84, 236],  [236, 88, 180],  [236, 106, 100], [212, 136, 32],
+    [160, 170, 0],   [116, 196, 0],   [76, 208, 32],   [56, 204, 108],
+    [56, 180, 204],  [60, 60, 60],    [0, 0, 0],       [0, 0, 0],
+    [236, 238, 236], [168, 204, 236], [188, 188, 236], [212, 178, 236],
+    [236, 174, 236], [236, 174, 212], [236, 180, 176], [228, 196, 144],
+    [204, 210, 120], [180, 222, 120], [168, 226, 144], [152, 226, 180],
+    [160, 214, 228], [160, 162, 160], [0, 0, 0],       [0, 0, 0],
+];
+
 pub struct PPU<'a> {
     ctrl: CtrlReg,
     mask: MaskReg,
@@ -121,7 +141,7 @@ impl<'a> PPU<'a> {
                 self.oam[self.oam_addr as usize] = value;
                 self.oam_addr = self.oam_addr.wrapping_add(1);
             }
-            0x2005 => panic!("Attempted to write to unimplemented register PPUSCROLL ($2005)"),
+            0x2005 => { /* TODO: PPUSCROLL */ }
             0x2006 => self.addr.write(value),
             0x2007 => self.write_data(value),
             _ => panic!("Invalid PPU register address: ${:04X}", addr),
@@ -155,6 +175,53 @@ impl<'a> PPU<'a> {
         self.oam.copy_from_slice(value);
     }
 
+    fn render_background(&mut self) {
+        let nametable_base = self.ctrl.nametable_addr();
+        let pattern_base = self.ctrl.bg_pattern_addr();
+
+        for tile_y in 0..30u16 {
+            for tile_x in 0..32u16 {
+                let nametable_addr = nametable_base + tile_y * 32 + tile_x;
+                let vram_offset = self.mirror_vram_addr(nametable_addr);
+                let tile_index = self.vram[vram_offset as usize] as u16;
+
+                // attribute table
+                let attr_addr = nametable_base + 0x3C0 + (tile_y / 4) * 8 + (tile_x / 4);
+                let attr_offset = self.mirror_vram_addr(attr_addr);
+                let attr_byte = self.vram[attr_offset as usize];
+                let shift = ((tile_y % 4) / 2 * 2 + (tile_x % 4) / 2) * 2;
+                let palette_index = ((attr_byte >> shift) & 0x03) as u16;
+
+                let tile_addr = pattern_base + tile_index * 16;
+
+                for row in 0..8u16 {
+                    let lo = self.cartridge.read_chr_rom(tile_addr + row);
+                    let hi = self.cartridge.read_chr_rom(tile_addr + row + 8);
+
+                    for col in 0..8u16 {
+                        let bit = 7 - col;
+                        let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+
+                        let palette_addr = if color_index == 0 {
+                            0
+                        } else {
+                            (palette_index * 4 + color_index as u16) as usize
+                        };
+                        let nes_color = self.palette_ram[palette_addr] as usize;
+                        let rgb = NES_PALETTE[nes_color & 0x3F];
+
+                        let px = (tile_x * 8 + col) as usize;
+                        let py = (tile_y * 8 + row) as usize;
+                        let offset = (py * SCREEN_WIDTH + px) * 3;
+                        self.frame_buffer[offset] = rgb[0];
+                        self.frame_buffer[offset + 1] = rgb[1];
+                        self.frame_buffer[offset + 2] = rgb[2];
+                    }
+                }
+            }
+        }
+    }
+
     pub fn tick(&mut self) {
         self.cycles += 1;
 
@@ -168,6 +235,7 @@ impl<'a> PPU<'a> {
         }
 
         if self.scanline == 241 && self.cycles == 1 {
+            self.render_background();
             self.frame_ready = true;
             self.status.set_vblank(true);
             if self.ctrl.generate_nmi() {
