@@ -24,7 +24,7 @@ pub struct CPU<'a> {
 
     ram: [u8; 2048],
 
-    ppu: &'a mut PPU<'a>,
+    pub ppu: &'a mut PPU<'a>,
     cartridge: &'a Cartridge,
 
     cycles: u64,
