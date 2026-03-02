@@ -1,7 +1,7 @@
 mod registers;
 
 use crate::cart::Cartridge;
-use registers::{AddrReg, CtrlReg, MaskReg, StatusReg};
+use registers::{CtrlReg, MaskReg, StatusReg};
 
 pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
@@ -31,7 +31,10 @@ pub struct Ppu {
     mask: MaskReg,
     status: StatusReg,
     oam_addr: u8,
-    addr: AddrReg,
+    v: u16,      // 15-bit current VRAM address
+    t: u16,      // 15-bit temporary VRAM address
+    fine_x: u8,  // 3-bit fine X scroll
+    w: bool,     // write latch (shared $2005/$2006)
 
     vram: [u8; 2048],
     palette_ram: [u8; 32],
@@ -53,7 +56,10 @@ impl Ppu {
             mask: MaskReg::new(),
             status: StatusReg::new(),
             oam_addr: 0,
-            addr: AddrReg::new(),
+            v: 0,
+            t: 0,
+            fine_x: 0,
+            w: false,
 
             vram: [0; 2048],
             palette_ram: [0; 32],
@@ -75,7 +81,7 @@ impl Ppu {
             0x2001 => panic!("Attempted to read from write-only register PPUMASK ($2001)"),
             0x2002 => {
                 let value = self.status.read();
-                self.addr.reset_latch();
+                self.w = false;
                 value
             }
             0x2003 => panic!("Attempted to read from write-only register OAMADDR ($2003)"),
@@ -88,8 +94,8 @@ impl Ppu {
     }
 
     fn read_data(&mut self, cart: &Cartridge) -> u8 {
-        let addr = self.addr.read();
-        self.addr.increment(self.ctrl.vram_increment());
+        let addr = self.v;
+        self.v = self.v.wrapping_add(self.ctrl.vram_increment() as u16) & 0x3FFF;
 
         match addr {
             0x0000..=0x1FFF => {
@@ -131,7 +137,11 @@ impl Ppu {
 
     pub fn write_register(&mut self, addr: u16, value: u8, cart: &mut Cartridge) {
         match addr {
-            0x2000 => self.ctrl.update(value),
+            0x2000 => {
+                self.ctrl.update(value);
+                // t: ...GH.. ........ = d: ......GH
+                self.t = (self.t & 0xF3FF) | (((value as u16) & 0x03) << 10);
+            }
             0x2001 => self.mask.update(value),
             0x2002 => panic!("Attempted to write to read-only register PPUSTATUS ($2002)"),
             0x2003 => self.oam_addr = value,
@@ -139,16 +149,43 @@ impl Ppu {
                 self.oam[self.oam_addr as usize] = value;
                 self.oam_addr = self.oam_addr.wrapping_add(1);
             }
-            0x2005 => { /* TODO: PPUSCROLL */ }
-            0x2006 => self.addr.write(value),
+            0x2005 => {
+                if !self.w {
+                    // 1st write: coarse X + fine X
+                    // t: ....... ...ABCDE = d: ABCDE...
+                    self.t = (self.t & 0xFFE0) | ((value as u16) >> 3);
+                    self.fine_x = value & 0x07;
+                    self.w = true;
+                } else {
+                    // 2nd write: fine Y + coarse Y
+                    // t: FGH..AB CDE..... = d: ABCDEFGH
+                    self.t = (self.t & 0x8FFF) | (((value as u16) & 0x07) << 12);
+                    self.t = (self.t & 0xFC1F) | (((value as u16) & 0xF8) << 2);
+                    self.w = false;
+                }
+            }
+            0x2006 => {
+                if !self.w {
+                    // 1st write: high byte
+                    // t: .CDEFGH ........ = d: ..CDEFGH  (bit 14 cleared)
+                    self.t = (self.t & 0x00FF) | (((value as u16) & 0x3F) << 8);
+                    self.w = true;
+                } else {
+                    // 2nd write: low byte, then v = t
+                    // t: ....... ABCDEFGH = d: ABCDEFGH
+                    self.t = (self.t & 0xFF00) | (value as u16);
+                    self.v = self.t;
+                    self.w = false;
+                }
+            }
             0x2007 => self.write_data(value, cart),
             _ => panic!("Invalid PPU register address: ${:04X}", addr),
         }
     }
 
     fn write_data(&mut self, value: u8, cart: &mut Cartridge) {
-        let addr = self.addr.read();
-        self.addr.increment(self.ctrl.vram_increment());
+        let addr = self.v;
+        self.v = self.v.wrapping_add(self.ctrl.vram_increment() as u16) & 0x3FFF;
 
         match addr {
             0x0000..=0x1FFF => {
@@ -172,34 +209,67 @@ impl Ppu {
 
     fn render_background(&mut self, cart: &Cartridge) {
         self.bg_opaque = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
-        let nametable_base = self.ctrl.nametable_addr();
         let pattern_base = self.ctrl.bg_pattern_addr();
 
-        for tile_y in 0..30u16 {
-            for tile_x in 0..32u16 {
-                let nametable_addr = nametable_base + tile_y * 32 + tile_x;
+        // Extract scroll position from t register
+        let coarse_x = self.t & 0x001F;
+        let coarse_y = (self.t >> 5) & 0x001F;
+        let base_nt = (self.t >> 10) & 0x0003;
+        let fine_y = (self.t >> 12) & 0x0007;
+
+        let tile_cols = if self.fine_x > 0 { 33u16 } else { 32u16 };
+        let tile_rows = if fine_y > 0 { 31u16 } else { 30u16 };
+
+        for ty in 0..tile_rows {
+            for tx in 0..tile_cols {
+                let mut nt = base_nt;
+                let mut cur_x = coarse_x + tx;
+                let mut cur_y = coarse_y + ty;
+
+                // X wrapping: at tile 32, flip horizontal nametable
+                if cur_x >= 32 {
+                    cur_x -= 32;
+                    nt ^= 1;
+                }
+
+                // Y wrapping: at row 30, flip vertical nametable
+                while cur_y >= 30 {
+                    cur_y -= 30;
+                    nt ^= 2;
+                }
+
+                let nametable_addr = 0x2000 + nt * 0x400 + cur_y * 32 + cur_x;
                 let vram_offset = self.mirror_vram_addr(nametable_addr, cart);
                 let tile_index = self.vram[vram_offset as usize] as u16;
 
                 // attribute table
-                let attr_addr = nametable_base + 0x3C0 + (tile_y / 4) * 8 + (tile_x / 4);
+                let attr_addr = 0x2000 + nt * 0x400 + 0x3C0 + (cur_y / 4) * 8 + (cur_x / 4);
                 let attr_offset = self.mirror_vram_addr(attr_addr, cart);
                 let attr_byte = self.vram[attr_offset as usize];
-                let shift = ((tile_y % 4) / 2 * 2 + (tile_x % 4) / 2) * 2;
+                let shift = ((cur_y % 4) / 2 * 2 + (cur_x % 4) / 2) * 2;
                 let palette_index = ((attr_byte >> shift) & 0x03) as u16;
 
                 let tile_addr = pattern_base + tile_index * 16;
 
                 for row in 0..8u16 {
+                    let screen_y = ty as i16 * 8 - fine_y as i16 + row as i16;
+                    if screen_y < 0 || screen_y >= 240 {
+                        continue;
+                    }
+                    let py = screen_y as usize;
+
                     let lo = cart.read_chr_rom(tile_addr + row);
                     let hi = cart.read_chr_rom(tile_addr + row + 8);
 
                     for col in 0..8u16 {
+                        let screen_x = tx as i16 * 8 - self.fine_x as i16 + col as i16;
+                        if screen_x < 0 || screen_x >= 256 {
+                            continue;
+                        }
+                        let px = screen_x as usize;
+
                         let bit = 7 - col;
                         let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-
-                        let px = (tile_x * 8 + col) as usize;
-                        let py = (tile_y * 8 + row) as usize;
 
                         let palette_addr = if color_index == 0 {
                             0
