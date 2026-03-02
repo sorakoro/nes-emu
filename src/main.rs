@@ -1,10 +1,12 @@
+mod bus;
 mod cart;
 mod cpu;
 mod ppu;
 
+use crate::bus::Bus;
 use crate::cart::Cartridge;
-use crate::cpu::CPU;
-use crate::ppu::{PPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::cpu::Cpu;
+use crate::ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
@@ -19,10 +21,10 @@ fn run() -> Result<(), String> {
     let path = args.get(1).ok_or("ROM path not specified".to_string())?;
     let raw = load_rom(Path::new(path))?;
 
-    let cart = Cartridge::new(&raw)?;
-    let mut ppu = PPU::new(&cart);
-    let mut cpu = CPU::new(&mut ppu, &cart);
-    cpu.reset();
+    let cartridge = Cartridge::new(&raw)?;
+    let mut bus = Bus::new(cartridge);
+    let mut cpu = Cpu::new();
+    cpu.reset(&mut bus);
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
@@ -62,9 +64,9 @@ fn run() -> Result<(), String> {
             }
         }
 
-        if cpu.step() {
+        if cpu.step(&mut bus) {
             texture
-                .update(None, &cpu.ppu.frame_buffer, SCREEN_WIDTH * 3)
+                .update(None, &bus.ppu.frame_buffer, SCREEN_WIDTH * 3)
                 .map_err(|e| e.to_string())?;
             canvas.copy(&texture, None, None)?;
             canvas.present();
@@ -75,5 +77,5 @@ fn run() -> Result<(), String> {
 }
 
 fn load_rom(path: &Path) -> Result<Vec<u8>, String> {
-    fs::read(path).map_err(|_| format!("Failed to read ROM file").to_string())
+    fs::read(path).map_err(|_| "Failed to read ROM file".to_string())
 }

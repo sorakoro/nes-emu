@@ -12,8 +12,8 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
-    pub fn new(raw: &Vec<u8>) -> Result<Cartridge, String> {
-        if &raw[0..4] != NES_TAG {
+    pub fn new(raw: &[u8]) -> Result<Cartridge, String> {
+        if raw[0..4] != NES_TAG {
             return Err("File is not in iNES file format.".to_string());
         }
 

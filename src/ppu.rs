@@ -26,7 +26,7 @@ const NES_PALETTE: [[u8; 3]; 64] = [
     [160, 214, 228], [160, 162, 160], [0, 0, 0],       [0, 0, 0],
 ];
 
-pub struct PPU<'a> {
+pub struct Ppu {
     ctrl: CtrlReg,
     mask: MaskReg,
     status: StatusReg,
@@ -43,13 +43,11 @@ pub struct PPU<'a> {
     nmi_occurred: bool,
     pub frame_ready: bool,
     pub frame_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
-
-    cartridge: &'a Cartridge,
 }
 
-impl<'a> PPU<'a> {
-    pub fn new(cartridge: &'a Cartridge) -> Self {
-        PPU {
+impl Ppu {
+    pub fn new() -> Self {
+        Ppu {
             ctrl: CtrlReg::new(),
             mask: MaskReg::new(),
             status: StatusReg::new(),
@@ -66,12 +64,10 @@ impl<'a> PPU<'a> {
             nmi_occurred: false,
             frame_ready: false,
             frame_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
-
-            cartridge,
         }
     }
 
-    pub fn read_register(&mut self, addr: u16) -> u8 {
+    pub fn read_register(&mut self, addr: u16, cart: &Cartridge) -> u8 {
         match addr {
             0x2000 => panic!("Attempted to read from write-only register PPUCTRL ($2000)"),
             0x2001 => panic!("Attempted to read from write-only register PPUMASK ($2001)"),
@@ -84,24 +80,24 @@ impl<'a> PPU<'a> {
             0x2004 => self.oam[self.oam_addr as usize],
             0x2005 => panic!("Attempted to read from write-only register PPUSCROLL ($2005)"),
             0x2006 => panic!("Attempted to read from write-only register PPUADDR ($2006)"),
-            0x2007 => self.read_data(),
+            0x2007 => self.read_data(cart),
             _ => panic!("Invalid PPU register address: ${:04X}", addr),
         }
     }
 
-    fn read_data(&mut self) -> u8 {
+    fn read_data(&mut self, cart: &Cartridge) -> u8 {
         let addr = self.addr.read();
         self.addr.increment(self.ctrl.vram_increment());
 
         match addr {
             0x0000..=0x1FFF => {
                 let buffer = self.internal_data_buffer;
-                self.internal_data_buffer = self.cartridge.read_chr_rom(addr);
+                self.internal_data_buffer = cart.read_chr_rom(addr);
                 buffer
             }
             0x2000..=0x3EFF => {
                 let buffer = self.internal_data_buffer;
-                let vram_addr = self.mirror_vram_addr(addr);
+                let vram_addr = self.mirror_vram_addr(addr, cart);
                 self.internal_data_buffer = self.vram[vram_addr as usize];
                 buffer
             }
@@ -113,12 +109,12 @@ impl<'a> PPU<'a> {
         }
     }
 
-    fn mirror_vram_addr(&self, addr: u16) -> u16 {
+    fn mirror_vram_addr(&self, addr: u16, cart: &Cartridge) -> u16 {
         let mirrored = addr & 0x2FFF;
         let nametable_index = (mirrored - 0x2000) / 0x400;
         let offset = (mirrored - 0x2000) % 0x400;
 
-        let is_vertical = self.cartridge.is_vertical_mirroring();
+        let is_vertical = cart.is_vertical_mirroring();
 
         match (nametable_index, is_vertical) {
             (0, _) => offset,
@@ -131,7 +127,7 @@ impl<'a> PPU<'a> {
         }
     }
 
-    pub fn write_register(&mut self, addr: u16, value: u8) {
+    pub fn write_register(&mut self, addr: u16, value: u8, cart: &Cartridge) {
         match addr {
             0x2000 => self.ctrl.update(value),
             0x2001 => self.mask.update(value),
@@ -143,12 +139,12 @@ impl<'a> PPU<'a> {
             }
             0x2005 => { /* TODO: PPUSCROLL */ }
             0x2006 => self.addr.write(value),
-            0x2007 => self.write_data(value),
+            0x2007 => self.write_data(value, cart),
             _ => panic!("Invalid PPU register address: ${:04X}", addr),
         }
     }
 
-    fn write_data(&mut self, value: u8) {
+    fn write_data(&mut self, value: u8, cart: &Cartridge) {
         let addr = self.addr.read();
         self.addr.increment(self.ctrl.vram_increment());
 
@@ -160,7 +156,7 @@ impl<'a> PPU<'a> {
                 )
             }
             0x2000..=0x3EFF => {
-                let vram_addr = self.mirror_vram_addr(addr);
+                let vram_addr = self.mirror_vram_addr(addr, cart);
                 self.vram[vram_addr as usize] = value;
             }
             0x3F00..=0x3FFF => {
@@ -175,19 +171,19 @@ impl<'a> PPU<'a> {
         self.oam.copy_from_slice(value);
     }
 
-    fn render_background(&mut self) {
+    fn render_background(&mut self, cart: &Cartridge) {
         let nametable_base = self.ctrl.nametable_addr();
         let pattern_base = self.ctrl.bg_pattern_addr();
 
         for tile_y in 0..30u16 {
             for tile_x in 0..32u16 {
                 let nametable_addr = nametable_base + tile_y * 32 + tile_x;
-                let vram_offset = self.mirror_vram_addr(nametable_addr);
+                let vram_offset = self.mirror_vram_addr(nametable_addr, cart);
                 let tile_index = self.vram[vram_offset as usize] as u16;
 
                 // attribute table
                 let attr_addr = nametable_base + 0x3C0 + (tile_y / 4) * 8 + (tile_x / 4);
-                let attr_offset = self.mirror_vram_addr(attr_addr);
+                let attr_offset = self.mirror_vram_addr(attr_addr, cart);
                 let attr_byte = self.vram[attr_offset as usize];
                 let shift = ((tile_y % 4) / 2 * 2 + (tile_x % 4) / 2) * 2;
                 let palette_index = ((attr_byte >> shift) & 0x03) as u16;
@@ -195,8 +191,8 @@ impl<'a> PPU<'a> {
                 let tile_addr = pattern_base + tile_index * 16;
 
                 for row in 0..8u16 {
-                    let lo = self.cartridge.read_chr_rom(tile_addr + row);
-                    let hi = self.cartridge.read_chr_rom(tile_addr + row + 8);
+                    let lo = cart.read_chr_rom(tile_addr + row);
+                    let hi = cart.read_chr_rom(tile_addr + row + 8);
 
                     for col in 0..8u16 {
                         let bit = 7 - col;
@@ -222,7 +218,7 @@ impl<'a> PPU<'a> {
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, cart: &Cartridge) {
         self.cycles += 1;
 
         if self.cycles == 341 {
@@ -235,7 +231,7 @@ impl<'a> PPU<'a> {
         }
 
         if self.scanline == 241 && self.cycles == 1 {
-            self.render_background();
+            self.render_background(cart);
             self.frame_ready = true;
             self.status.set_vblank(true);
             if self.ctrl.generate_nmi() {
