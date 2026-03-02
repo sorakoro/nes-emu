@@ -12,6 +12,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
+use std::time::{Duration, Instant};
 use std::{env, fs, path::Path};
 
 const OVERSCAN_TOP: u32 = 9;
@@ -58,6 +59,11 @@ fn run() -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
+    const FRAME_DURATION: Duration = Duration::from_nanos(16_639_267); // 1/60.0988
+    let mut next_frame = Instant::now();
+    let mut frame_count: u32 = 0;
+    let mut fps_timer = Instant::now();
+
     'running: loop {
         if cpu.step(&mut bus) {
             for event in event_pump.poll_iter() {
@@ -73,14 +79,30 @@ fn run() -> Result<(), String> {
 
             let keys = event_pump.keyboard_state();
             let mut buttons: u8 = 0;
-            if keys.is_scancode_pressed(Scancode::Z) { buttons |= 1 << 0; } // A
-            if keys.is_scancode_pressed(Scancode::X) { buttons |= 1 << 1; } // B
-            if keys.is_scancode_pressed(Scancode::RShift) { buttons |= 1 << 2; } // Select
-            if keys.is_scancode_pressed(Scancode::Return) { buttons |= 1 << 3; } // Start
-            if keys.is_scancode_pressed(Scancode::Up) { buttons |= 1 << 4; }
-            if keys.is_scancode_pressed(Scancode::Down) { buttons |= 1 << 5; }
-            if keys.is_scancode_pressed(Scancode::Left) { buttons |= 1 << 6; }
-            if keys.is_scancode_pressed(Scancode::Right) { buttons |= 1 << 7; }
+            if keys.is_scancode_pressed(Scancode::Z) {
+                buttons |= 1 << 0;
+            } // A
+            if keys.is_scancode_pressed(Scancode::X) {
+                buttons |= 1 << 1;
+            } // B
+            if keys.is_scancode_pressed(Scancode::RShift) {
+                buttons |= 1 << 2;
+            } // Select
+            if keys.is_scancode_pressed(Scancode::Return) {
+                buttons |= 1 << 3;
+            } // Start
+            if keys.is_scancode_pressed(Scancode::Up) {
+                buttons |= 1 << 4;
+            }
+            if keys.is_scancode_pressed(Scancode::Down) {
+                buttons |= 1 << 5;
+            }
+            if keys.is_scancode_pressed(Scancode::Left) {
+                buttons |= 1 << 6;
+            }
+            if keys.is_scancode_pressed(Scancode::Right) {
+                buttons |= 1 << 7;
+            }
             bus.controller.update(buttons);
 
             texture
@@ -89,6 +111,29 @@ fn run() -> Result<(), String> {
             let src = Rect::new(0, OVERSCAN_TOP as i32, SCREEN_WIDTH as u32, VISIBLE_HEIGHT);
             canvas.copy(&texture, src, None)?;
             canvas.present();
+
+            // FPS display
+            frame_count += 1;
+            if fps_timer.elapsed() >= Duration::from_secs(1) {
+                let fps = frame_count as f64 / fps_timer.elapsed().as_secs_f64();
+                let title = format!("NES Emulator - {:.1} fps", fps);
+                canvas.window_mut().set_title(&title).unwrap_or(());
+                frame_count = 0;
+                fps_timer = Instant::now();
+            }
+
+            // Frame rate control: sleep + spin-wait hybrid
+            next_frame += FRAME_DURATION;
+            let now = Instant::now();
+            if next_frame > now {
+                let remaining = next_frame - now;
+                if remaining > Duration::from_millis(1) {
+                    std::thread::sleep(remaining - Duration::from_millis(1));
+                }
+                while Instant::now() < next_frame {
+                    std::hint::spin_loop();
+                }
+            }
         }
     }
 
