@@ -1,10 +1,12 @@
 use crate::cart::Cartridge;
+use crate::controller::Controller;
 use crate::ppu::Ppu;
 
 pub struct Bus {
     pub ram: [u8; 2048],
     pub ppu: Ppu,
     pub cartridge: Cartridge,
+    pub controller: Controller,
 }
 
 impl Bus {
@@ -13,6 +15,7 @@ impl Bus {
             ram: [0; 2048],
             ppu: Ppu::new(),
             cartridge,
+            controller: Controller::new(),
         }
     }
 
@@ -27,6 +30,8 @@ impl Bus {
                 self.ppu.read_register(mirror_addr, &self.cartridge)
             }
             0x4014 => panic!("Attempted to read from write-only register OAMDMA ($4014)"),
+            0x4016 => self.controller.read(),
+            0x4017 => 0, // Player 2 not implemented
             0x8000..=0xFFFF => self.cartridge.read_prg_rom(addr),
             _ => 0,
         }
@@ -43,6 +48,7 @@ impl Bus {
                 self.ppu
                     .write_register(mirror_addr, value, &mut self.cartridge);
             }
+            0x4016 => self.controller.write(value),
             0x8000..=0xFFFF => {
                 panic!("Attempted to write to ROM at ${:04X}", addr)
             }

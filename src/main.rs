@@ -1,5 +1,6 @@
 mod bus;
 mod cart;
+mod controller;
 mod cpu;
 mod ppu;
 
@@ -8,7 +9,7 @@ use crate::cart::Cartridge;
 use crate::cpu::Cpu;
 use crate::ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::PixelFormatEnum;
 use std::{env, fs, path::Path};
 
@@ -65,6 +66,18 @@ fn run() -> Result<(), String> {
         }
 
         if cpu.step(&mut bus) {
+            let keys = event_pump.keyboard_state();
+            let mut buttons: u8 = 0;
+            if keys.is_scancode_pressed(Scancode::Z) { buttons |= 1 << 0; } // A
+            if keys.is_scancode_pressed(Scancode::X) { buttons |= 1 << 1; } // B
+            if keys.is_scancode_pressed(Scancode::RShift) { buttons |= 1 << 2; } // Select
+            if keys.is_scancode_pressed(Scancode::Return) { buttons |= 1 << 3; } // Start
+            if keys.is_scancode_pressed(Scancode::Up) { buttons |= 1 << 4; }
+            if keys.is_scancode_pressed(Scancode::Down) { buttons |= 1 << 5; }
+            if keys.is_scancode_pressed(Scancode::Left) { buttons |= 1 << 6; }
+            if keys.is_scancode_pressed(Scancode::Right) { buttons |= 1 << 7; }
+            bus.controller.update(buttons);
+
             texture
                 .update(None, &bus.ppu.frame_buffer, SCREEN_WIDTH * 3)
                 .map_err(|e| e.to_string())?;
