@@ -59,18 +59,18 @@ fn run() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
 
     'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
-            }
-        }
-
         if cpu.step(&mut bus) {
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit { .. }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::Escape),
+                        ..
+                    } => break 'running,
+                    _ => {}
+                }
+            }
+
             let keys = event_pump.keyboard_state();
             let mut buttons: u8 = 0;
             if keys.is_scancode_pressed(Scancode::Z) { buttons |= 1 << 0; } // A
