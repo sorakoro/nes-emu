@@ -43,6 +43,7 @@ pub struct Ppu {
     nmi_occurred: bool,
     pub frame_ready: bool,
     pub frame_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
+    bg_opaque: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
 }
 
 impl Ppu {
@@ -64,6 +65,7 @@ impl Ppu {
             nmi_occurred: false,
             frame_ready: false,
             frame_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
+            bg_opaque: [false; SCREEN_WIDTH * SCREEN_HEIGHT],
         }
     }
 
@@ -169,6 +171,7 @@ impl Ppu {
     }
 
     fn render_background(&mut self, cart: &Cartridge) {
+        self.bg_opaque = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
         let nametable_base = self.ctrl.nametable_addr();
         let pattern_base = self.ctrl.bg_pattern_addr();
 
@@ -195,21 +198,133 @@ impl Ppu {
                         let bit = 7 - col;
                         let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
 
+                        let px = (tile_x * 8 + col) as usize;
+                        let py = (tile_y * 8 + row) as usize;
+
                         let palette_addr = if color_index == 0 {
                             0
                         } else {
+                            self.bg_opaque[py * SCREEN_WIDTH + px] = true;
                             (palette_index * 4 + color_index as u16) as usize
                         };
                         let nes_color = self.palette_ram[palette_addr] as usize;
                         let rgb = NES_PALETTE[nes_color & 0x3F];
 
-                        let px = (tile_x * 8 + col) as usize;
-                        let py = (tile_y * 8 + row) as usize;
                         let offset = (py * SCREEN_WIDTH + px) * 3;
                         self.frame_buffer[offset] = rgb[0];
                         self.frame_buffer[offset + 1] = rgb[1];
                         self.frame_buffer[offset + 2] = rgb[2];
                     }
+                }
+            }
+        }
+    }
+
+    fn render_sprites(&mut self, cart: &Cartridge) {
+        if !self.mask.show_sprites() {
+            return;
+        }
+
+        let sprite_height = self.ctrl.sprite_size() as u16;
+
+        // Sprite overflow detection: count sprites per scanline
+        for scanline in 0..240u16 {
+            let mut count = 0u8;
+            for i in 0..64 {
+                let y = self.oam[i * 4] as u16 + 1;
+                if scanline >= y && scanline < y + sprite_height {
+                    count += 1;
+                    if count > 8 {
+                        self.status.set_sprite_overflow(true);
+                        break;
+                    }
+                }
+            }
+            if count > 8 {
+                break;
+            }
+        }
+
+        // Draw sprites in reverse order (63→0) so lower index sprites appear on top
+        for i in (0..64).rev() {
+            let oam_offset = i * 4;
+            let sprite_y = self.oam[oam_offset] as u16 + 1;
+            let tile_index = self.oam[oam_offset + 1] as u16;
+            let attributes = self.oam[oam_offset + 2];
+            let sprite_x = self.oam[oam_offset + 3] as usize;
+
+            let palette_index = (attributes & 0x03) as u16;
+            let behind_bg = attributes & 0x20 != 0;
+            let flip_h = attributes & 0x40 != 0;
+            let flip_v = attributes & 0x80 != 0;
+
+            for row in 0..sprite_height {
+                let py = sprite_y + row;
+                if py >= 240 {
+                    continue;
+                }
+
+                let actual_row = if flip_v { sprite_height - 1 - row } else { row };
+
+                let (pattern_base, tile_num) = if sprite_height == 16 {
+                    // 8x16 mode: bit 0 of tile index selects pattern table
+                    let bank = (tile_index & 1) * 0x1000;
+                    let base_tile = tile_index & 0xFE;
+                    if actual_row < 8 {
+                        (bank, base_tile)
+                    } else {
+                        (bank, base_tile + 1)
+                    }
+                } else {
+                    // 8x8 mode
+                    (self.ctrl.sprite_pattern_addr(), tile_index)
+                };
+
+                let tile_row = actual_row % 8;
+                let tile_addr = pattern_base + tile_num * 16 + tile_row;
+                let lo = cart.read_chr_rom(tile_addr);
+                let hi = cart.read_chr_rom(tile_addr + 8);
+
+                for col in 0..8u16 {
+                    let px = sprite_x + col as usize;
+                    if px >= 256 {
+                        continue;
+                    }
+
+                    // Left 8px clipping
+                    if px < 8 && !self.mask.show_sprites_leftmost() {
+                        continue;
+                    }
+
+                    let bit = if flip_h { col } else { 7 - col };
+                    let color_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+
+                    // Transparent pixel
+                    if color_index == 0 {
+                        continue;
+                    }
+
+                    let pixel_idx = py as usize * SCREEN_WIDTH + px;
+
+                    // Sprite 0 Hit: sprite 0 opaque pixel overlaps opaque BG pixel
+                    // Does not trigger at x=255
+                    if i == 0 && self.bg_opaque[pixel_idx] && px != 255 {
+                        self.status.set_sprite_zero_hit(true);
+                    }
+
+                    // Behind-BG priority: don't draw sprite if BG is opaque
+                    if behind_bg && self.bg_opaque[pixel_idx] {
+                        continue;
+                    }
+
+                    let palette_addr = (0x10 + palette_index * 4 + color_index as u16) as usize;
+                    let nes_color = self.palette_ram[palette_addr] as usize;
+                    let rgb = NES_PALETTE[nes_color & 0x3F];
+
+                    let fb_offset = pixel_idx * 3;
+                    self.frame_buffer[fb_offset] = rgb[0];
+                    self.frame_buffer[fb_offset + 1] = rgb[1];
+                    self.frame_buffer[fb_offset + 2] = rgb[2];
                 }
             }
         }
@@ -229,6 +344,7 @@ impl Ppu {
 
         if self.scanline == 241 && self.cycles == 1 {
             self.render_background(cart);
+            self.render_sprites(cart);
             self.frame_ready = true;
             self.status.set_vblank(true);
             if self.ctrl.generate_nmi() {
