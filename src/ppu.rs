@@ -3,6 +3,9 @@ mod registers;
 use crate::cart::Cartridge;
 use registers::{AddrReg, CtrlReg, MaskReg, StatusReg};
 
+pub const SCREEN_WIDTH: usize = 256;
+pub const SCREEN_HEIGHT: usize = 240;
+
 pub struct PPU<'a> {
     ctrl: CtrlReg,
     mask: MaskReg,
@@ -18,6 +21,8 @@ pub struct PPU<'a> {
     scanline: u16,
     cycles: u16,
     nmi_occurred: bool,
+    pub frame_ready: bool,
+    pub frame_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
 
     cartridge: &'a Cartridge,
 }
@@ -39,6 +44,8 @@ impl<'a> PPU<'a> {
             scanline: 0,
             cycles: 0,
             nmi_occurred: false,
+            frame_ready: false,
+            frame_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT * 3],
 
             cartridge,
         }
@@ -161,6 +168,7 @@ impl<'a> PPU<'a> {
         }
 
         if self.scanline == 241 && self.cycles == 1 {
+            self.frame_ready = true;
             self.status.set_vblank(true);
             if self.ctrl.generate_nmi() {
                 self.nmi_occurred = true;
