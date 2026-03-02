@@ -33,13 +33,13 @@ impl Cartridge {
         Ok(Cartridge {
             is_vertical_mirroring,
             mapper,
-            prg_rom: raw[prg_rom_start..prg_rom_size].to_vec(),
-            chr_rom: raw[chr_rom_start..chr_rom_size].to_vec(),
+            prg_rom: raw[prg_rom_start..prg_rom_start + prg_rom_size].to_vec(),
+            chr_rom: raw[chr_rom_start..chr_rom_start + chr_rom_size].to_vec(),
         })
     }
 
     pub fn read_prg_rom(&self, addr: u16) -> u8 {
-        let addr = (addr - 0x8000) as usize;
+        let addr = (addr - 0x8000) as usize % self.prg_rom.len();
         self.prg_rom[addr]
     }
 
