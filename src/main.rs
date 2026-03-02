@@ -11,7 +11,12 @@ use crate::ppu::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::PixelFormatEnum;
+use sdl2::rect::Rect;
 use std::{env, fs, path::Path};
+
+const OVERSCAN_TOP: u32 = 9;
+const OVERSCAN_BOTTOM: u32 = 7;
+const VISIBLE_HEIGHT: u32 = SCREEN_HEIGHT as u32 - OVERSCAN_TOP - OVERSCAN_BOTTOM;
 
 fn main() {
     run().unwrap();
@@ -35,7 +40,7 @@ fn run() -> Result<(), String> {
         .window(
             "NES Emulator",
             SCREEN_WIDTH as u32 * scale,
-            SCREEN_HEIGHT as u32 * scale,
+            VISIBLE_HEIGHT * scale,
         )
         .position_centered()
         .build()
@@ -81,7 +86,8 @@ fn run() -> Result<(), String> {
             texture
                 .update(None, &bus.ppu.frame_buffer, SCREEN_WIDTH * 3)
                 .map_err(|e| e.to_string())?;
-            canvas.copy(&texture, None, None)?;
+            let src = Rect::new(0, OVERSCAN_TOP as i32, SCREEN_WIDTH as u32, VISIBLE_HEIGHT);
+            canvas.copy(&texture, src, None)?;
             canvas.present();
         }
     }
