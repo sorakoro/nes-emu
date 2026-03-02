@@ -122,6 +122,7 @@ impl Cpu {
             let dma_cpu_cycles = 513 + (self.cycles & 1);
             self.cycles += dma_cpu_cycles;
             bus.tick_ppu(dma_cpu_cycles as u16 * 3);
+            bus.tick_apu(dma_cpu_cycles as u16);
         } else {
             bus.write(addr, value);
         }
@@ -459,6 +460,7 @@ impl Cpu {
 
         let ppu_cycles = cycles as u16 * 3;
         bus.tick_ppu(ppu_cycles);
+        bus.tick_apu(cycles as u16);
         if bus.ppu.poll_nmi() {
             self.nmi(bus);
         }

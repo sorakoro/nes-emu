@@ -1,3 +1,4 @@
+use crate::apu::Apu;
 use crate::cart::Cartridge;
 use crate::controller::Controller;
 use crate::ppu::Ppu;
@@ -5,6 +6,7 @@ use crate::ppu::Ppu;
 pub struct Bus {
     pub ram: [u8; 2048],
     pub ppu: Ppu,
+    pub apu: Apu,
     pub cartridge: Cartridge,
     pub controller: Controller,
 }
@@ -14,6 +16,7 @@ impl Bus {
         Bus {
             ram: [0; 2048],
             ppu: Ppu::new(),
+            apu: Apu::new(),
             cartridge,
             controller: Controller::new(),
         }
@@ -30,6 +33,7 @@ impl Bus {
                 self.ppu.read_register(mirror_addr, &self.cartridge)
             }
             0x4014 => panic!("Attempted to read from write-only register OAMDMA ($4014)"),
+            0x4015 => self.apu.read_status(),
             0x4016 => self.controller.read(),
             0x4017 => 0, // Player 2 not implemented
             0x8000..=0xFFFF => self.cartridge.read_prg_rom(addr),
@@ -48,7 +52,9 @@ impl Bus {
                 self.ppu
                     .write_register(mirror_addr, value, &mut self.cartridge);
             }
+            0x4000..=0x4007 | 0x4015 => self.apu.write_register(addr, value),
             0x4016 => self.controller.write(value),
+            0x4017 => self.apu.write_register(addr, value),
             0x8000..=0xFFFF => {
                 panic!("Attempted to write to ROM at ${:04X}", addr)
             }
@@ -68,5 +74,9 @@ impl Bus {
         for _ in 0..cycles {
             self.ppu.tick(&self.cartridge);
         }
+    }
+
+    pub fn tick_apu(&mut self, cpu_cycles: u16) {
+        self.apu.tick(cpu_cycles);
     }
 }

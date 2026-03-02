@@ -1,3 +1,4 @@
+mod apu;
 mod bus;
 mod cart;
 mod controller;
@@ -59,6 +60,17 @@ fn run() -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
+    // Audio setup
+    let audio_subsystem = sdl_context.audio()?;
+    let desired_spec = sdl2::audio::AudioSpecDesired {
+        freq: Some(44_100),
+        channels: Some(1),
+        samples: Some(1024),
+    };
+    let audio_queue =
+        sdl2::audio::AudioQueue::<f32>::open_queue(&audio_subsystem, None, &desired_spec)?;
+    audio_queue.resume();
+
     const FRAME_DURATION: Duration = Duration::from_nanos(16_639_267); // 1/60.0988
     let mut next_frame = Instant::now();
     let mut frame_count: u32 = 0;
@@ -118,6 +130,16 @@ fn run() -> Result<(), String> {
             let src = Rect::new(0, OVERSCAN_TOP as i32, SCREEN_WIDTH as u32, VISIBLE_HEIGHT);
             canvas.copy(&texture, src, None)?;
             canvas.present();
+
+            // Queue audio samples
+            let samples = bus.apu.drain_audio_buffer();
+            if !samples.is_empty() {
+                // Prevent queue from growing too large (max ~4 frames worth)
+                let max_queued = 44_100 / 15 * 4; // ~4 frames of samples in bytes
+                if audio_queue.size() < max_queued as u32 {
+                    audio_queue.queue_audio(&samples).map_err(|e| e.to_string())?;
+                }
+            }
 
             // FPS display
             frame_count += 1;

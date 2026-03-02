@@ -31,10 +31,10 @@ pub struct Ppu {
     mask: MaskReg,
     status: StatusReg,
     oam_addr: u8,
-    v: u16,      // 15-bit current VRAM address
-    t: u16,      // 15-bit temporary VRAM address
-    fine_x: u8,  // 3-bit fine X scroll
-    w: bool,     // write latch (shared $2005/$2006)
+    v: u16,     // 15-bit current VRAM address
+    t: u16,     // 15-bit temporary VRAM address
+    fine_x: u8, // 3-bit fine X scroll
+    w: bool,    // write latch (shared $2005/$2006)
 
     vram: [u8; 2048],
     palette_ram: [u8; 32],
