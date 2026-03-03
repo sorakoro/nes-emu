@@ -19,6 +19,10 @@ const NOISE_PERIOD_TABLE: [u16; 16] = [
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
 ];
 
+const DMC_RATE_TABLE: [u16; 16] = [
+    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
+];
+
 const CPU_FREQ: f64 = 1_789_773.0;
 const SAMPLE_RATE: f64 = 44_100.0;
 
@@ -396,11 +400,153 @@ impl NoiseChannel {
     }
 }
 
+struct DmcChannel {
+    irq_enabled: bool,
+    loop_flag: bool,
+    timer_period: u16,
+    timer: u16,
+    output_level: u8,
+    shift_register: u8,
+    bits_remaining: u8,
+    silence_flag: bool,
+    sample_buffer: Option<u8>,
+    sample_addr_load: u16,
+    sample_length_load: u16,
+    sample_addr: u16,
+    bytes_remaining: u16,
+    sample_request: Option<u16>,
+    irq_flag: bool,
+    enabled: bool,
+}
+
+impl DmcChannel {
+    fn new() -> Self {
+        DmcChannel {
+            irq_enabled: false,
+            loop_flag: false,
+            timer_period: DMC_RATE_TABLE[0],
+            timer: DMC_RATE_TABLE[0],
+            output_level: 0,
+            shift_register: 0,
+            bits_remaining: 8,
+            silence_flag: true,
+            sample_buffer: None,
+            sample_addr_load: 0xC000,
+            sample_length_load: 1,
+            sample_addr: 0xC000,
+            bytes_remaining: 0,
+            sample_request: None,
+            irq_flag: false,
+            enabled: false,
+        }
+    }
+
+    fn write_reg(&mut self, reg: u8, value: u8) {
+        match reg {
+            0 => {
+                // $4010
+                self.irq_enabled = value & 0x80 != 0;
+                self.loop_flag = value & 0x40 != 0;
+                self.timer_period = DMC_RATE_TABLE[(value & 0x0F) as usize];
+                if !self.irq_enabled {
+                    self.irq_flag = false;
+                }
+            }
+            1 => {
+                // $4011: direct load
+                self.output_level = value & 0x7F;
+            }
+            2 => {
+                // $4012
+                self.sample_addr_load = 0xC000 + (value as u16 * 64);
+            }
+            3 => {
+                // $4013
+                self.sample_length_load = (value as u16 * 16) + 1;
+            }
+            _ => {}
+        }
+    }
+
+    fn tick_timer(&mut self) {
+        if self.timer == 0 {
+            self.timer = self.timer_period;
+
+            if !self.silence_flag {
+                if self.shift_register & 1 == 1 {
+                    if self.output_level <= 125 {
+                        self.output_level += 2;
+                    }
+                } else if self.output_level >= 2 {
+                    self.output_level -= 2;
+                }
+                self.shift_register >>= 1;
+            }
+
+            self.bits_remaining -= 1;
+            if self.bits_remaining == 0 {
+                self.bits_remaining = 8;
+                if let Some(buf) = self.sample_buffer.take() {
+                    self.shift_register = buf;
+                    self.silence_flag = false;
+                } else {
+                    self.silence_flag = true;
+                }
+                // If buffer is now empty and there are more bytes, request one
+                if self.sample_buffer.is_none() && self.bytes_remaining > 0 {
+                    self.sample_request = Some(self.sample_addr);
+                }
+            }
+        } else {
+            self.timer -= 1;
+        }
+    }
+
+    fn receive_sample(&mut self, byte: u8) {
+        self.sample_buffer = Some(byte);
+        self.sample_addr = self.sample_addr.wrapping_add(1);
+        if self.sample_addr == 0x0000 {
+            self.sample_addr = 0x8000;
+        }
+        self.bytes_remaining -= 1;
+        if self.bytes_remaining == 0 {
+            if self.loop_flag {
+                self.restart();
+            } else if self.irq_enabled {
+                self.irq_flag = true;
+            }
+        }
+    }
+
+    fn restart(&mut self) {
+        self.sample_addr = self.sample_addr_load;
+        self.bytes_remaining = self.sample_length_load;
+    }
+
+    fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        if !enabled {
+            self.bytes_remaining = 0;
+            self.sample_request = None;
+        } else if self.bytes_remaining == 0 {
+            self.restart();
+            if self.sample_buffer.is_none() {
+                self.sample_request = Some(self.sample_addr);
+            }
+        }
+    }
+
+    fn output(&self) -> u8 {
+        self.output_level
+    }
+}
+
 pub struct Apu {
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     triangle: TriangleChannel,
     noise: NoiseChannel,
+    dmc: DmcChannel,
 
     frame_counter_mode: u8, // 0 = 4-step, 1 = 5-step
     frame_counter_cycle: u64,
@@ -419,6 +565,7 @@ impl Apu {
             pulse2: PulseChannel::new(false),
             triangle: TriangleChannel::new(),
             noise: NoiseChannel::new(),
+            dmc: DmcChannel::new(),
             frame_counter_mode: 0,
             frame_counter_cycle: 0,
             irq_inhibit: false,
@@ -434,8 +581,9 @@ impl Apu {
             self.frame_counter_cycle += 1;
             self.clock_frame_counter();
 
-            // Triangle timer ticks every CPU cycle
+            // Triangle and DMC timers tick every CPU cycle
             self.triangle.tick_timer();
+            self.dmc.tick_timer();
 
             // Pulse timers tick every other CPU cycle
             self.timer_divider = !self.timer_divider;
@@ -513,10 +661,12 @@ impl Apu {
 
         let t = self.triangle.output() as f32;
         let n = self.noise.output() as f32;
-        let tnd_out = if t == 0.0 && n == 0.0 {
+        let d = self.dmc.output() as f32;
+        let tnd_sum = t / 8227.0 + n / 12241.0 + d / 22638.0;
+        let tnd_out = if tnd_sum == 0.0 {
             0.0
         } else {
-            159.79 / (1.0 / (t / 8227.0 + n / 12241.0) + 100.0)
+            159.79 / (1.0 / tnd_sum + 100.0)
         };
 
         pulse_out + tnd_out
@@ -534,11 +684,16 @@ impl Apu {
                 let reg = (addr - 0x400C) as u8;
                 self.noise.write_reg(reg, value);
             }
+            0x4010..=0x4013 => {
+                self.dmc.write_reg((addr - 0x4010) as u8, value);
+            }
             0x4015 => {
                 self.pulse1.set_enabled(value & 0x01 != 0);
                 self.pulse2.set_enabled(value & 0x02 != 0);
                 self.triangle.set_enabled(value & 0x04 != 0);
                 self.noise.set_enabled(value & 0x08 != 0);
+                self.dmc.set_enabled(value & 0x10 != 0);
+                self.dmc.irq_flag = false;
             }
             0x4017 => {
                 self.frame_counter_mode = (value >> 7) & 1;
@@ -566,7 +721,22 @@ impl Apu {
         if self.noise.length_counter > 0 {
             status |= 0x08;
         }
+        if self.dmc.bytes_remaining > 0 {
+            status |= 0x10;
+        }
+        if self.dmc.irq_flag {
+            status |= 0x80;
+        }
+        self.dmc.irq_flag = false;
         status
+    }
+
+    pub fn dmc_sample_request(&mut self) -> Option<u16> {
+        self.dmc.sample_request.take()
+    }
+
+    pub fn dmc_receive_sample(&mut self, byte: u8) {
+        self.dmc.receive_sample(byte);
     }
 
     pub fn drain_audio_buffer(&mut self) -> Vec<f32> {

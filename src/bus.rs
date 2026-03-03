@@ -52,7 +52,7 @@ impl Bus {
                 self.ppu
                     .write_register(mirror_addr, value, &mut self.cartridge);
             }
-            0x4000..=0x400F | 0x4015 => self.apu.write_register(addr, value),
+            0x4000..=0x4013 | 0x4015 => self.apu.write_register(addr, value),
             0x4016 => self.controller.write(value),
             0x4017 => self.apu.write_register(addr, value),
             0x8000..=0xFFFF => {
@@ -78,5 +78,9 @@ impl Bus {
 
     pub fn tick_apu(&mut self, cpu_cycles: u16) {
         self.apu.tick(cpu_cycles);
+        if let Some(addr) = self.apu.dmc_sample_request() {
+            let byte = self.peek(addr);
+            self.apu.dmc_receive_sample(byte);
+        }
     }
 }
