@@ -23,6 +23,7 @@ pub struct Cartridge {
     is_vertical_mirroring: bool,
     mapper: Mapper,
     has_chr_ram: bool,
+    has_battery: bool,
     prg_rom: Vec<u8>,
     chr_rom: Vec<u8>,
 }
@@ -37,6 +38,7 @@ impl Cartridge {
         let chr_rom_pages = raw[5] as usize;
 
         let is_vertical_mirroring = raw[6] & 0b1 != 0;
+        let has_battery = raw[6] & 0b10 != 0;
         let skip_trainer = raw[6] & 0b100 != 0;
         let mapper_num = (raw[7] & 0b1111_0000) | (raw[6] >> 4);
 
@@ -65,6 +67,7 @@ impl Cartridge {
             is_vertical_mirroring,
             mapper,
             has_chr_ram: chr_rom_pages == 0,
+            has_battery,
             prg_rom: raw[prg_rom_start..prg_rom_start + prg_rom_size].to_vec(),
             chr_rom: if chr_rom_pages > 0 {
                 raw[chr_rom_start..chr_rom_start + chr_rom_size].to_vec()
@@ -254,6 +257,30 @@ impl Cartridge {
         }
     }
 
+    pub fn has_battery(&self) -> bool {
+        self.has_battery
+    }
+
+    pub fn load_sav(&mut self, data: &[u8]) {
+        match &mut self.mapper {
+            Mapper::Mmc3 { prg_ram, .. } => {
+                let len = data.len().min(prg_ram.len());
+                prg_ram[..len].copy_from_slice(&data[..len]);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn save_data(&self) -> Option<&[u8]> {
+        if !self.has_battery {
+            return None;
+        }
+        match &self.mapper {
+            Mapper::Mmc3 { prg_ram, .. } => Some(prg_ram),
+            _ => None,
+        }
+    }
+
     pub fn is_vertical_mirroring(&self) -> bool {
         self.is_vertical_mirroring
     }
@@ -264,6 +291,7 @@ impl Cartridge {
             is_vertical_mirroring: false,
             mapper: Mapper::Nrom,
             has_chr_ram: true,
+            has_battery: false,
             prg_rom,
             chr_rom: vec![0; 0x2000],
         }

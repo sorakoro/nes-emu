@@ -27,9 +27,18 @@ fn main() {
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
     let path = args.get(1).ok_or("ROM path not specified".to_string())?;
-    let raw = load_rom(Path::new(path))?;
+    let rom_path = Path::new(path);
+    let raw = load_rom(rom_path)?;
 
-    let cartridge = Cartridge::new(&raw)?;
+    let sav_path = rom_path.with_extension("sav");
+    let mut cartridge = Cartridge::new(&raw)?;
+    if cartridge.has_battery() {
+        if let Ok(sav) = fs::read(&sav_path) {
+            cartridge.load_sav(&sav);
+            eprintln!("Loaded save: {}", sav_path.display());
+        }
+    }
+
     let mut bus = Bus::new(cartridge);
     let mut cpu = Cpu::new();
     cpu.reset(&mut bus);
@@ -164,6 +173,11 @@ fn run() -> Result<(), String> {
                 }
             }
         }
+    }
+
+    if let Some(data) = bus.cartridge.save_data() {
+        fs::write(&sav_path, data).map_err(|e| e.to_string())?;
+        eprintln!("Saved: {}", sav_path.display());
     }
 
     Ok(())
