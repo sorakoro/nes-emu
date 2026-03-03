@@ -52,7 +52,7 @@ impl Bus {
                 self.ppu
                     .write_register(mirror_addr, value, &mut self.cartridge);
             }
-            0x4000..=0x4007 | 0x4015 => self.apu.write_register(addr, value),
+            0x4000..=0x400B | 0x4015 => self.apu.write_register(addr, value),
             0x4016 => self.controller.write(value),
             0x4017 => self.apu.write_register(addr, value),
             0x8000..=0xFFFF => {

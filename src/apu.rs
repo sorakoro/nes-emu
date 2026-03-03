@@ -10,6 +10,11 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
     [1, 1, 1, 1, 1, 1, 0, 0], // 75% (inverted 25%)
 ];
 
+const TRIANGLE_SEQUENCE: [u8; 32] = [
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 15,
+];
+
 const CPU_FREQ: f64 = 1_789_773.0;
 const SAMPLE_RATE: f64 = 44_100.0;
 
@@ -186,9 +191,100 @@ impl PulseChannel {
     }
 }
 
+struct TriangleChannel {
+    control_flag: bool, // length counter halt / linear counter control
+    linear_counter_reload: u8,
+    linear_counter: u8,
+    linear_counter_reload_flag: bool,
+    timer_period: u16,
+    timer: u16,
+    length_counter: u8,
+    sequencer_pos: u8,
+    enabled: bool,
+}
+
+impl TriangleChannel {
+    fn new() -> Self {
+        TriangleChannel {
+            control_flag: false,
+            linear_counter_reload: 0,
+            linear_counter: 0,
+            linear_counter_reload_flag: false,
+            timer_period: 0,
+            timer: 0,
+            length_counter: 0,
+            sequencer_pos: 0,
+            enabled: false,
+        }
+    }
+
+    fn write_reg(&mut self, reg: u8, value: u8) {
+        match reg {
+            0 => {
+                // $4008
+                self.control_flag = value & 0x80 != 0;
+                self.linear_counter_reload = value & 0x7F;
+            }
+            2 => {
+                // $400A
+                self.timer_period = (self.timer_period & 0xFF00) | value as u16;
+            }
+            3 => {
+                // $400B
+                self.timer_period = (self.timer_period & 0x00FF) | ((value as u16 & 0x07) << 8);
+                if self.enabled {
+                    self.length_counter = LENGTH_TABLE[(value >> 3) as usize];
+                }
+                self.linear_counter_reload_flag = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn tick_timer(&mut self) {
+        if self.timer == 0 {
+            self.timer = self.timer_period;
+            if self.linear_counter > 0 && self.length_counter > 0 {
+                self.sequencer_pos = (self.sequencer_pos + 1) % 32;
+            }
+        } else {
+            self.timer -= 1;
+        }
+    }
+
+    fn tick_linear_counter(&mut self) {
+        if self.linear_counter_reload_flag {
+            self.linear_counter = self.linear_counter_reload;
+        } else if self.linear_counter > 0 {
+            self.linear_counter -= 1;
+        }
+        if !self.control_flag {
+            self.linear_counter_reload_flag = false;
+        }
+    }
+
+    fn tick_length_counter(&mut self) {
+        if !self.control_flag && self.length_counter > 0 {
+            self.length_counter -= 1;
+        }
+    }
+
+    fn output(&self) -> u8 {
+        TRIANGLE_SEQUENCE[self.sequencer_pos as usize]
+    }
+
+    fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        if !enabled {
+            self.length_counter = 0;
+        }
+    }
+}
+
 pub struct Apu {
     pulse1: PulseChannel,
     pulse2: PulseChannel,
+    triangle: TriangleChannel,
 
     frame_counter_mode: u8, // 0 = 4-step, 1 = 5-step
     frame_counter_cycle: u64,
@@ -205,6 +301,7 @@ impl Apu {
         Apu {
             pulse1: PulseChannel::new(true),
             pulse2: PulseChannel::new(false),
+            triangle: TriangleChannel::new(),
             frame_counter_mode: 0,
             frame_counter_cycle: 0,
             irq_inhibit: false,
@@ -219,6 +316,9 @@ impl Apu {
             // Frame counter
             self.frame_counter_cycle += 1;
             self.clock_frame_counter();
+
+            // Triangle timer ticks every CPU cycle
+            self.triangle.tick_timer();
 
             // Pulse timers tick every other CPU cycle
             self.timer_divider = !self.timer_divider;
@@ -269,6 +369,7 @@ impl Apu {
     fn quarter_frame(&mut self) {
         self.pulse1.tick_envelope();
         self.pulse2.tick_envelope();
+        self.triangle.tick_linear_counter();
     }
 
     fn half_frame(&mut self) {
@@ -277,26 +378,41 @@ impl Apu {
         self.pulse2.tick_length_counter();
         self.pulse1.tick_sweep();
         self.pulse2.tick_sweep();
+        self.triangle.tick_length_counter();
     }
 
     fn mix(&self) -> f32 {
         let p1 = self.pulse1.output() as f32;
         let p2 = self.pulse2.output() as f32;
-        let sum = p1 + p2;
-        if sum == 0.0 {
+        let pulse_sum = p1 + p2;
+        let pulse_out = if pulse_sum == 0.0 {
             0.0
         } else {
-            95.52 / (8128.0 / sum + 100.0)
-        }
+            95.52 / (8128.0 / pulse_sum + 100.0)
+        };
+
+        let t = self.triangle.output() as f32;
+        let tnd_out = if t == 0.0 {
+            0.0
+        } else {
+            159.79 / (1.0 / (t / 8227.0) + 100.0)
+        };
+
+        pulse_out + tnd_out
     }
 
     pub fn write_register(&mut self, addr: u16, value: u8) {
         match addr {
             0x4000..=0x4003 => self.pulse1.write_reg((addr & 0x03) as u8, value),
             0x4004..=0x4007 => self.pulse2.write_reg((addr & 0x03) as u8, value),
+            0x4008 | 0x400A | 0x400B => {
+                let reg = (addr - 0x4008) as u8;
+                self.triangle.write_reg(reg, value);
+            }
             0x4015 => {
                 self.pulse1.set_enabled(value & 0x01 != 0);
                 self.pulse2.set_enabled(value & 0x02 != 0);
+                self.triangle.set_enabled(value & 0x04 != 0);
             }
             0x4017 => {
                 self.frame_counter_mode = (value >> 7) & 1;
@@ -317,6 +433,9 @@ impl Apu {
         }
         if self.pulse2.length_counter > 0 {
             status |= 0x02;
+        }
+        if self.triangle.length_counter > 0 {
+            status |= 0x04;
         }
         status
     }
