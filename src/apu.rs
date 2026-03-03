@@ -551,6 +551,7 @@ pub struct Apu {
     frame_counter_mode: u8, // 0 = 4-step, 1 = 5-step
     frame_counter_cycle: u64,
     irq_inhibit: bool,
+    frame_irq_flag: bool,
 
     timer_divider: bool,
 
@@ -569,6 +570,7 @@ impl Apu {
             frame_counter_mode: 0,
             frame_counter_cycle: 0,
             irq_inhibit: false,
+            frame_irq_flag: false,
             timer_divider: false,
             sample_cycle: 0.0,
             audio_buffer: Vec::with_capacity(1024),
@@ -613,6 +615,9 @@ impl Apu {
                 11186 => self.quarter_frame(),
                 14915 => {
                     self.half_frame();
+                    if !self.irq_inhibit {
+                        self.frame_irq_flag = true;
+                    }
                     self.frame_counter_cycle = 0;
                 }
                 _ => {}
@@ -698,6 +703,9 @@ impl Apu {
             0x4017 => {
                 self.frame_counter_mode = (value >> 7) & 1;
                 self.irq_inhibit = value & 0x40 != 0;
+                if self.irq_inhibit {
+                    self.frame_irq_flag = false;
+                }
                 self.frame_counter_cycle = 0;
                 if self.frame_counter_mode == 1 {
                     self.half_frame();
@@ -724,11 +732,18 @@ impl Apu {
         if self.dmc.bytes_remaining > 0 {
             status |= 0x10;
         }
+        if self.frame_irq_flag {
+            status |= 0x40;
+        }
         if self.dmc.irq_flag {
             status |= 0x80;
         }
-        self.dmc.irq_flag = false;
+        self.frame_irq_flag = false;
         status
+    }
+
+    pub fn irq_pending(&self) -> bool {
+        self.frame_irq_flag || self.dmc.irq_flag
     }
 
     pub fn dmc_sample_request(&mut self) -> Option<u16> {

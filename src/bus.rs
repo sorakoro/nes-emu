@@ -76,11 +76,14 @@ impl Bus {
         }
     }
 
-    pub fn tick_apu(&mut self, cpu_cycles: u16) {
+    pub fn tick_apu(&mut self, cpu_cycles: u16) -> u16 {
         self.apu.tick(cpu_cycles);
         if let Some(addr) = self.apu.dmc_sample_request() {
             let byte = self.peek(addr);
             self.apu.dmc_receive_sample(byte);
+            4 // DMC DMA stall cycles
+        } else {
+            0
         }
     }
 }

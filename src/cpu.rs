@@ -122,7 +122,11 @@ impl Cpu {
             let dma_cpu_cycles = 513 + (self.cycles & 1);
             self.cycles += dma_cpu_cycles;
             bus.tick_ppu(dma_cpu_cycles as u16 * 3);
-            bus.tick_apu(dma_cpu_cycles as u16);
+            let dmc_stall = bus.tick_apu(dma_cpu_cycles as u16);
+            if dmc_stall > 0 {
+                self.cycles += dmc_stall as u64;
+                bus.tick_ppu(dmc_stall * 3);
+            }
         } else {
             bus.write(addr, value);
         }
@@ -460,9 +464,16 @@ impl Cpu {
 
         let ppu_cycles = cycles as u16 * 3;
         bus.tick_ppu(ppu_cycles);
-        bus.tick_apu(cycles as u16);
+        let dmc_stall = bus.tick_apu(cycles as u16);
+        if dmc_stall > 0 {
+            self.cycles += dmc_stall as u64;
+            bus.tick_ppu(dmc_stall * 3);
+        }
         if bus.ppu.poll_nmi() {
             self.nmi(bus);
+        }
+        if bus.apu.irq_pending() {
+            self.irq(bus);
         }
 
         if bus.ppu.frame_ready {
@@ -587,8 +598,16 @@ impl Cpu {
         self.pc = (hi << 8) | lo;
     }
 
-    pub fn irq(&mut self) {
-        // TODO: IRQ割り込み処理
+    pub fn irq(&mut self, bus: &mut Bus) {
+        if self.status & INTERRUPT_DISABLE != 0 {
+            return;
+        }
+        self.push_u16(bus, self.pc);
+        self.push(bus, (self.status & !BREAK) | UNUSED);
+        self.set_flag(INTERRUPT_DISABLE, true);
+        let lo = bus.read(0xFFFE) as u16;
+        let hi = bus.read(0xFFFF) as u16;
+        self.pc = (hi << 8) | lo;
     }
 }
 
