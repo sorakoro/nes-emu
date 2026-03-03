@@ -1,6 +1,6 @@
 const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96,
-    22, 192, 24, 72, 26, 16, 28, 32, 30,
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
+    192, 24, 72, 26, 16, 28, 32, 30,
 ];
 
 const DUTY_TABLE: [[u8; 8]; 4] = [
@@ -11,8 +11,8 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
 ];
 
 const TRIANGLE_SEQUENCE: [u8; 32] = [
-    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-    12, 13, 14, 15,
+    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    13, 14, 15,
 ];
 
 const NOISE_PERIOD_TABLE: [u16; 16] = [
@@ -552,6 +552,8 @@ pub struct Apu {
     frame_counter_cycle: u64,
     irq_inhibit: bool,
     frame_irq_flag: bool,
+    frame_counter_reset_delay: u8,
+    pending_frame_counter_mode: u8,
 
     timer_divider: bool,
 
@@ -571,6 +573,8 @@ impl Apu {
             frame_counter_cycle: 0,
             irq_inhibit: false,
             frame_irq_flag: false,
+            frame_counter_reset_delay: 0,
+            pending_frame_counter_mode: 0,
             timer_divider: false,
             sample_cycle: 0.0,
             audio_buffer: Vec::with_capacity(1024),
@@ -579,6 +583,18 @@ impl Apu {
 
     pub fn tick(&mut self, cpu_cycles: u16) {
         for _ in 0..cpu_cycles {
+            // Pending frame counter reset (delayed $4017 write)
+            if self.frame_counter_reset_delay > 0 {
+                self.frame_counter_reset_delay -= 1;
+                if self.frame_counter_reset_delay == 0 {
+                    self.frame_counter_cycle = 0;
+                    self.frame_counter_mode = self.pending_frame_counter_mode;
+                    if self.frame_counter_mode == 1 {
+                        self.half_frame();
+                    }
+                }
+            }
+
             // Frame counter
             self.frame_counter_cycle += 1;
             self.clock_frame_counter();
@@ -701,15 +717,13 @@ impl Apu {
                 self.dmc.irq_flag = false;
             }
             0x4017 => {
-                self.frame_counter_mode = (value >> 7) & 1;
                 self.irq_inhibit = value & 0x40 != 0;
                 if self.irq_inhibit {
                     self.frame_irq_flag = false;
                 }
-                self.frame_counter_cycle = 0;
-                if self.frame_counter_mode == 1 {
-                    self.half_frame();
-                }
+                self.pending_frame_counter_mode = (value >> 7) & 1;
+                // Reset is delayed: 3 cycles if on odd cycle, 4 if even
+                self.frame_counter_reset_delay = if self.timer_divider { 4 } else { 3 };
             }
             _ => {}
         }
