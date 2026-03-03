@@ -475,6 +475,9 @@ impl Cpu {
         if bus.apu.irq_pending() {
             self.irq(bus);
         }
+        if bus.cartridge.irq_pending() {
+            self.irq(bus);
+        }
 
         if bus.ppu.frame_ready {
             bus.ppu.frame_ready = false;

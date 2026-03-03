@@ -36,6 +36,7 @@ impl Bus {
             0x4015 => self.apu.read_status(),
             0x4016 => self.controller.read(),
             0x4017 => 0, // Player 2 not implemented
+            0x6000..=0x7FFF => self.cartridge.read_prg_ram(addr),
             0x8000..=0xFFFF => self.cartridge.read_prg_rom(addr),
             _ => 0,
         }
@@ -55,9 +56,8 @@ impl Bus {
             0x4000..=0x4013 | 0x4015 => self.apu.write_register(addr, value),
             0x4016 => self.controller.write(value),
             0x4017 => self.apu.write_register(addr, value),
-            0x8000..=0xFFFF => {
-                panic!("Attempted to write to ROM at ${:04X}", addr)
-            }
+            0x6000..=0x7FFF => self.cartridge.write_prg_ram(addr, value),
+            0x8000..=0xFFFF => self.cartridge.write_mapper(addr, value),
             _ => {}
         }
     }
@@ -72,7 +72,7 @@ impl Bus {
 
     pub fn tick_ppu(&mut self, cycles: u16) {
         for _ in 0..cycles {
-            self.ppu.tick(&self.cartridge);
+            self.ppu.tick(&mut self.cartridge);
         }
     }
 

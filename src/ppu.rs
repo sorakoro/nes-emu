@@ -418,7 +418,7 @@ impl Ppu {
         }
     }
 
-    pub fn tick(&mut self, cart: &Cartridge) {
+    pub fn tick(&mut self, cart: &mut Cartridge) {
         self.cycles += 1;
 
         if self.cycles == 341 {
@@ -445,6 +445,9 @@ impl Ppu {
                 if rendering && self.cycles == 257 {
                     self.copy_horizontal_t_to_v();
                 }
+                if rendering && self.cycles == 260 {
+                    cart.clock_irq_counter();
+                }
             }
             // VBlank start
             241 => {
@@ -465,6 +468,9 @@ impl Ppu {
                 }
                 if rendering && self.cycles == 257 {
                     self.copy_horizontal_t_to_v();
+                }
+                if rendering && self.cycles == 260 {
+                    cart.clock_irq_counter();
                 }
                 if rendering && self.cycles == 280 {
                     self.copy_vertical_t_to_v();
