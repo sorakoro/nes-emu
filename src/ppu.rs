@@ -291,7 +291,7 @@ impl Ppu {
 
             for col in 0..8u16 {
                 let screen_x = tx as i16 * 8 - self.fine_x as i16 + col as i16;
-                if screen_x < 0 || screen_x >= 256 {
+                if !(0..256).contains(&screen_x) {
                     continue;
                 }
                 let px = screen_x as usize;

@@ -32,11 +32,11 @@ fn run() -> Result<(), String> {
 
     let sav_path = rom_path.with_extension("sav");
     let mut cartridge = Cartridge::new(&raw)?;
-    if cartridge.has_battery() {
-        if let Ok(sav) = fs::read(&sav_path) {
-            cartridge.load_sav(&sav);
-            eprintln!("Loaded save: {}", sav_path.display());
-        }
+    if cartridge.has_battery()
+        && let Ok(sav) = fs::read(&sav_path)
+    {
+        cartridge.load_sav(&sav);
+        eprintln!("Loaded save: {}", sav_path.display());
     }
 
     let mut bus = Bus::new(cartridge);
@@ -146,7 +146,9 @@ fn run() -> Result<(), String> {
                 // Prevent queue from growing too large (max ~4 frames worth)
                 let max_queued = 44_100 / 15 * 4; // ~4 frames of samples in bytes
                 if audio_queue.size() < max_queued as u32 {
-                    audio_queue.queue_audio(&samples).map_err(|e| e.to_string())?;
+                    audio_queue
+                        .queue_audio(&samples)
+                        .map_err(|e| e.to_string())?;
                 }
             }
 

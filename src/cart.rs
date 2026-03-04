@@ -220,33 +220,30 @@ impl Cartridge {
     }
 
     pub fn write_prg_ram(&mut self, addr: u16, value: u8) {
-        match &mut self.mapper {
-            Mapper::Mmc3 { prg_ram, .. } => prg_ram[(addr - 0x6000) as usize] = value,
-            _ => {}
+        if let Mapper::Mmc3 { prg_ram, .. } = &mut self.mapper {
+            prg_ram[(addr - 0x6000) as usize] = value;
         }
     }
 
     pub fn clock_irq_counter(&mut self) {
-        match &mut self.mapper {
-            Mapper::Mmc3 {
-                irq_counter,
-                irq_reload,
-                irq_reload_flag,
-                irq_enabled,
-                irq_pending,
-                ..
-            } => {
-                if *irq_reload_flag || *irq_counter == 0 {
-                    *irq_counter = *irq_reload;
-                    *irq_reload_flag = false;
-                } else {
-                    *irq_counter -= 1;
-                }
-                if *irq_counter == 0 && *irq_enabled {
-                    *irq_pending = true;
-                }
+        if let Mapper::Mmc3 {
+            irq_counter,
+            irq_reload,
+            irq_reload_flag,
+            irq_enabled,
+            irq_pending,
+            ..
+        } = &mut self.mapper
+        {
+            if *irq_reload_flag || *irq_counter == 0 {
+                *irq_counter = *irq_reload;
+                *irq_reload_flag = false;
+            } else {
+                *irq_counter -= 1;
             }
-            _ => {}
+            if *irq_counter == 0 && *irq_enabled {
+                *irq_pending = true;
+            }
         }
     }
 
@@ -262,12 +259,9 @@ impl Cartridge {
     }
 
     pub fn load_sav(&mut self, data: &[u8]) {
-        match &mut self.mapper {
-            Mapper::Mmc3 { prg_ram, .. } => {
-                let len = data.len().min(prg_ram.len());
-                prg_ram[..len].copy_from_slice(&data[..len]);
-            }
-            _ => {}
+        if let Mapper::Mmc3 { prg_ram, .. } = &mut self.mapper {
+            let len = data.len().min(prg_ram.len());
+            prg_ram[..len].copy_from_slice(&data[..len]);
         }
     }
 
